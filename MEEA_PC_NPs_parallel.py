@@ -9,6 +9,8 @@ import os
 import time
 from contextlib import contextmanager
 from policyNet import MLPModel
+import warnings
+warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
 from rdkit import Chem
 from rdkit.Chem import AllChem
 class TimeoutException(Exception): pass

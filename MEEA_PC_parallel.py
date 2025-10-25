@@ -10,6 +10,8 @@ import time  # 시간 측정
 from contextlib import contextmanager  # 컨텍스트 매니저 데코레이터
 from policyNet import MLPModel  # 정책 네트워크 모델
 import os  # 운영체제 인터페이스
+import warnings  # 경고 억제
+warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
 from rdkit import Chem  # 분자 구조 처리
 from rdkit.Chem import AllChem  # 화학 정보학 알고리즘
 import pandas as pd  # 데이터 프레임 처리
