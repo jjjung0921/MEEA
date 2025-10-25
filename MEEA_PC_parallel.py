@@ -64,7 +64,7 @@ def smiles_to_fp(s, fp_dim=2048, pack=False):
     mol = Chem.MolFromSmiles(s)  # SMILES를 RDKit 분자 객체로 변환
     fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=fp_dim)  # Morgan FP 생성 (반지름 2)
     onbits = list(fp.GetOnBits())  # 활성화된 비트 인덱스 추출
-    arr = np.zeros(fp.GetNumBits(), dtype=np.bool)  # 영벡터 생성
+    arr = np.zeros(fp.GetNumBits(), dtype=bool)  # 영벡터 생성
     arr[onbits] = 1  # 활성 비트 설정
     if pack:
         arr = np.packbits(arr)  # 압축이 필요한 경우 비트 패킹

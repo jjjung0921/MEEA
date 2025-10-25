@@ -29,7 +29,7 @@ def smiles_to_fp(s, fp_dim=2048, pack=False):
     mol = Chem.MolFromSmiles(s)
     fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=fp_dim)
     onbits = list(fp.GetOnBits())
-    arr = np.zeros(fp.GetNumBits(), dtype=np.bool)
+    arr = np.zeros(fp.GetNumBits(), dtype=bool)
     arr[onbits] = 1
     if pack:
         arr = np.packbits(arr)
