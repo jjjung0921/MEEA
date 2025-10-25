@@ -582,12 +582,12 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
                 player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct)
                 success, node, count = player.search(times)
                 route, template = player.vis_synthetic_path(node)
-        except:
+        except Exception as e:
             # 타임아웃 또는 오류 발생 시
             success = False
             route = [None]
             template = [None]
-            print(f"[Thread {thread}] Molecule {idx}/{total} timed out or failed", flush=True)
+            print(f"[Thread {thread}] Molecule {idx}/{total} failed with error: {type(e).__name__}: {str(e)}", flush=True)
 
         # 결과 저장
         routes.append(route)
