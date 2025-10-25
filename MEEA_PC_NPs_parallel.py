@@ -6,6 +6,7 @@ import numpy as np
 from valueEnsemble import ValueEnsemble
 import signal
 import os
+import time
 from contextlib import contextmanager
 from policyNet import MLPModel
 from rdkit import Chem
@@ -263,6 +264,8 @@ class MCTS_A:
 
     def search(self, times=500):
         success, node = False, None
+        progress_interval = max(1, times // 10)  # 진행 상황 출력 주기
+
         while self.iterations < times and not success and (not np.all(self.root.child_illegal > 0) or len(self.root.child_illegal) == 0):
             expand_node = self.select()
             if '.'.join(expand_node.state) in self.visited_state:
@@ -276,6 +279,11 @@ class MCTS_A:
                 self.visited_state.append('.'.join(expand_node.state))
                 success, node = self.expand(expand_node)
                 self.update(expand_node)
+
+            # 진행 상황 출력
+            if (self.iterations % progress_interval == 0 or self.iterations == 1) and self.iterations <= times:
+                print(f"[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
+
             if self.visited_policy[self.target_mol] is None:
                 return False, None, times
         return success, node, self.iterations
@@ -299,7 +307,10 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
     successes = []
     depths = []
     counts = []
-    for mol in mols:
+    total = len(mols)
+
+    for idx, mol in enumerate(mols, 1):
+        print(f"[Thread {thread}] Start molecule {idx}/{total}: {mol}", flush=True)
         try:
             with time_limit(600):
                 player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct)
@@ -309,15 +320,19 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
             success = False
             route = [None]
             template = [None]
+            print(f"[Thread {thread}] Molecule {idx}/{total} timed out or failed", flush=True)
+
         routes.append(route)
         templates.append(template)
         successes.append(success)
         if success:
             depths.append(node.depth)
             counts.append(count)
+            print(f"[Thread {thread}] Completed molecule {idx}/{total} in {count} iterations (depth {node.depth})", flush=True)
         else:
             depths.append(32)
             counts.append(-1)
+            print(f"[Thread {thread}] Failed molecule {idx}/{total}", flush=True)
     ans = {
         'route': routes,
         'template': templates,
@@ -329,7 +344,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         pickle.dump(ans, writer, protocol=4)
 
 
-def gather(dataset, simulations, cpuct, times):
+def gather(dataset, simulations, cpuct, times, elapsed_time):
     result = {
         'route': [],
         'template': [],
@@ -347,7 +362,12 @@ def gather(dataset, simulations, cpuct, times):
     success = np.mean(result['success'])
     depth = np.mean(result['depth'])
     fr = open('result_simulation.txt', 'a')
-    fr.write(str(simulations) + '\t' + str(times) + '\t' + str(simulations) + '\t' + str(cpuct) + '\t' + str(success) + '\t' + str(depth) + '\n')
+    # Format: dataset, simulations, times, cpuct, success_rate, avg_depth, elapsed_time(s), elapsed_time(h:m:s)
+    hours = int(elapsed_time // 3600)
+    minutes = int((elapsed_time % 3600) // 60)
+    seconds = int(elapsed_time % 60)
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\n")
     f = open('./test/stat_norm_retro_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '_' + str(times) + '.pkl', 'wb')
     pickle.dump(result, f)
     f.close()
@@ -379,6 +399,7 @@ if __name__ == '__main__':
         num_more = len(targets) - intervals * len(gpus)
         for simulations in [100]:
             for times in [3000]:
+                start_time = time.time()
                 jobs = [Process(target=play, args=(dataset, targets[i * (intervals + 1): (i + 1) * (intervals + 1)], i, known_mols, value_models[i], one_steps[i], devices[i], simulations, cpuct, times)) for i in range(num_more)]
                 start = num_more * (intervals + 1)
                 for i in range(len(gpus)- num_more):
@@ -387,4 +408,5 @@ if __name__ == '__main__':
                     j.start()
                 for j in jobs:
                     j.join()
-                gather(dataset, simulations, cpuct, times)
+                elapsed_time = time.time() - start_time
+                gather(dataset, simulations, cpuct, times, elapsed_time)

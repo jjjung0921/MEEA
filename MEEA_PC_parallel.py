@@ -6,6 +6,7 @@ import torch  # PyTorch 딥러닝 프레임워크
 import numpy as np  # 수치 계산용 NumPy
 from valueEnsemble import ValueEnsemble  # 가치 함수 앙상블 모델
 import signal  # 시그널 처리 (타임아웃 구현용)
+import time  # 시간 측정
 from contextlib import contextmanager  # 컨텍스트 매니저 데코레이터
 from policyNet import MLPModel  # 정책 네트워크 모델
 import os  # 운영체제 인터페이스
@@ -616,7 +617,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         pickle.dump(ans, writer, protocol=4)
 
 
-def gather(dataset, simulations, cpuct, times):
+def gather(dataset, simulations, cpuct, times, elapsed_time):
     """
     병렬 프로세스에서 생성된 결과 파일들을 수집하고 통합
 
@@ -625,6 +626,7 @@ def gather(dataset, simulations, cpuct, times):
         simulations: 시뮬레이션 횟수
         cpuct: UCT 파라미터
         times: 최대 반복 횟수
+        elapsed_time: 실행에 소요된 시간(초)
     """
     result = {
         'route': [],
@@ -650,7 +652,12 @@ def gather(dataset, simulations, cpuct, times):
 
     # 결과 요약을 텍스트 파일에 추가
     fr = open('result_simulation.txt', 'a')
-    fr.write(dataset + '\t' + str(simulations) + '\t' + str(times) + '\t' + str(cpuct) + '\t' + str(success) + '\t' + str(depth) + '\n')
+    # Format: dataset, simulations, times, cpuct, success_rate, avg_depth, elapsed_time(s), elapsed_time(h:m:s)
+    hours = int(elapsed_time // 3600)
+    minutes = int((elapsed_time % 3600) // 60)
+    seconds = int(elapsed_time % 60)
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\n")
 
     # 통합된 결과를 피클 파일로 저장
     f = open('./test/stat_pc_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '.pkl', 'wb')
@@ -709,6 +716,7 @@ if __name__ == '__main__':
 
         # 최대 반복 횟수
         for times in [500]:
+            start_time = time.time()
             jobs = []
 
             # 나머지가 있는 워커들은 1개씩 더 많은 분자를 처리
@@ -727,5 +735,7 @@ if __name__ == '__main__':
             for j in jobs:
                 j.join()
 
+            elapsed_time = time.time() - start_time
+
             # 결과 수집 및 통합
-            gather(data, simulations, cpuct, times)
+            gather(data, simulations, cpuct, times, elapsed_time)
