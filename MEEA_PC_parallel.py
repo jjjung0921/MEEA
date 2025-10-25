@@ -678,7 +678,8 @@ if __name__ == '__main__':
     value_models = []  # 가치 모델 리스트
 
     # GPU 할당: GPU 4번만 사용 (28개 워커 모두 GPU 4번 사용)
-    gpus = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    # CUDA_VISIBLE_DEVICES=4로 설정되어 있으므로 PyTorch는 디바이스 0번으로 인식
+    gpus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # 모델 파일 경로
     model_path = './saved_model/policy_model.ckpt'
