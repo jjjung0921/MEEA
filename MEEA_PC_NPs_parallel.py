@@ -363,7 +363,7 @@ if __name__ == '__main__':
     value_models = []
     model_path = './saved_model/policy_model.ckpt'
     model_f = './saved_model/value_pc.pt'
-    gpus = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+    gpus = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
     for i in range(len(gpus)):
         one_step = prepare_expand(model_path, gpus[i])
         device = torch.device('cuda:' + str(gpus[i]))
