@@ -8,7 +8,6 @@ import signal
 import os
 from contextlib import contextmanager
 from policyNet import MLPModel
-from onmt.bin.translate import load_model, run
 from rdkit import Chem
 from rdkit.Chem import AllChem
 class TimeoutException(Exception): pass
@@ -67,30 +66,6 @@ def prepare_starting_molecules_natural():
         line = line.strip().split('\t')
         data.append(line[-1])
     return data
-
-
-class policy_onmt:
-    def __init__(self, device):
-        self.device = device
-        self.topk = 50
-        self.beam_size = 20
-        self.model_path = [
-            './checkpoints/model_step_30000.pt',
-            './checkpoints/model_step_50000.pt',
-            './checkpoints/model_step_80000.pt',
-            './checkpoints/model_step_100000.pt'
-        ]
-        self.opt, self.translator = load_model(
-            model_path=self.model_path,
-            beam_size=self.beam_size,
-            topk=self.topk,
-            device=self.device,
-            tokenizer='char')
-    
-    def run(self, x):
-        res_dict = run(self.translator, self.opt, x)
-        res_dict['template'] = [None for _ in range(len(res_dict['scores']))]
-        return res_dict
 
 
 def prepare_expand(model_path, gpu=-1):
@@ -386,10 +361,11 @@ if __name__ == '__main__':
     one_steps = []
     devices = []
     value_models = []
+    model_path = './saved_model/policy_model.ckpt'
     model_f = './saved_model/value_pc.pt'
     gpus = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3]
     for i in range(len(gpus)):
-        one_step = policy_onmt(gpus[i])
+        one_step = prepare_expand(model_path, gpus[i])
         device = torch.device('cuda:' + str(gpus[i]))
         value_model = prepare_value(model_f, gpus[i])
         value_models.append(value_model)

@@ -1,0 +1,51 @@
+# Model checkpoints and data
+checkpoints/
+prepare_data/
+saved_model/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Results and logs
+test/
+*.txt
+*.log
+
+# Data files
+*.pkl
+*.csv
+*.h5
+*.hdf5
