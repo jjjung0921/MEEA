@@ -167,13 +167,14 @@ class Node:
 
 
 class MCTS_A:
-    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct):
+    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=None):
         self.target_mol = target_mol
         self.known_mols = known_mols
         self.expand_fn = expand_fn
         self.value_model = value_model
         self.device = device
         self.cpuct = cpuct
+        self.thread_id = thread_id  # Thread 번호 저장
         root_value = value_fn(self.value_model, [target_mol], self.device)
         self.root = Node([target_mol], root_value, prior=1.0, cpuct=self.cpuct)
         self.open = [self.root]
@@ -273,7 +274,7 @@ class MCTS_A:
 
     def search(self, times=500):
         success, node = False, None
-        progress_interval = max(1, times // 10)  # 진행 상황 출력 주기
+        progress_interval = 100  # 100회마다 진행 상황 출력
 
         while self.iterations < times and not success and (not np.all(self.root.child_illegal > 0) or len(self.root.child_illegal) == 0):
             expand_node = self.select()
@@ -291,7 +292,8 @@ class MCTS_A:
 
             # 진행 상황 출력
             if (self.iterations % progress_interval == 0 or self.iterations == 1) and self.iterations <= times:
-                print(f"[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
+                thread_prefix = f"[Thread {self.thread_id}] " if self.thread_id is not None else ""
+                print(f"{thread_prefix}[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
 
             if self.visited_policy[self.target_mol] is None:
                 return False, None, times
@@ -326,7 +328,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         print(f"[Thread {thread}] Start molecule {idx}/{total}: {mol}", flush=True)
         try:
             with time_limit(600):
-                player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct)
+                player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=thread)
                 success, node, count = player.search(times=times)
                 route, template = player.vis_synthetic_path(node)
         except Exception as e:

@@ -335,7 +335,7 @@ class MCTS_A:
     MCTS 기반 역합성 경로 계획 클래스
     목표 분자를 시작 물질로 분해하는 합성 경로를 탐색
     """
-    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct):
+    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=None):
         """
         Args:
             target_mol: 목표 분자 (SMILES)
@@ -345,6 +345,7 @@ class MCTS_A:
             device: 연산 디바이스
             simulations: 시뮬레이션 횟수
             cpuct: UCT 탐색 상수
+            thread_id: Thread 번호 (출력용)
         """
         self.target_mol = target_mol  # 합성하고자 하는 목표 분자
         self.known_mols = known_mols  # 구매 가능한 시작 물질
@@ -352,6 +353,7 @@ class MCTS_A:
         self.value_model = value_model  # 가치 함수
         self.device = device  # CPU/GPU
         self.cpuct = cpuct  # UCT 탐색 파라미터
+        self.thread_id = thread_id  # Thread 번호 저장
 
         # 루트 노드 생성 (목표 분자에서 시작)
         root_value = value_fn(self.value_model, [target_mol], self.device)
@@ -499,7 +501,7 @@ class MCTS_A:
             tuple: (성공 여부, 성공 시 최종 노드, 실제 반복 횟수)
         """
         success, node = False, None
-        progress_interval = max(1, times // 10)  # 진행 상황 출력 주기
+        progress_interval = 100  # 100회마다 진행 상황 출력
 
         # 반복 한도에 도달하지 않고, 아직 성공하지 못했고, 루트가 막히지 않았으면 계속 탐색
         while self.iterations < times and not success and (not np.all(self.root.child_illegal > 0) or len(self.root.child_illegal) == 0):
@@ -522,7 +524,8 @@ class MCTS_A:
 
             # 진행 상황 출력
             if (self.iterations % progress_interval == 0 or self.iterations == 1) and self.iterations <= times:
-                print(f"[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
+                thread_prefix = f"[Thread {self.thread_id}] " if self.thread_id is not None else ""
+                print(f"{thread_prefix}[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
 
             # 목표 분자를 확장할 수 없는 경우 (정책이 None)
             if self.visited_policy[self.target_mol] is None:
@@ -590,7 +593,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         try:
             # 600초 타임아웃 설정
             with time_limit(600):
-                player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct)
+                player = MCTS_A(mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=thread)
                 success, node, count = player.search(times)
                 route, template = player.vis_synthetic_path(node)
         except Exception as e:
