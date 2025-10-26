@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from policyNet import MLPModel
 import warnings
 warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')  # RDKit 로거 비활성화
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdFingerprintGenerator
 class TimeoutException(Exception): pass
@@ -198,6 +200,10 @@ class MCTS_A:
         return openings[index]
     
     def preprocessPolicy(self, policy):
+        # policy가 None인 경우 처리
+        if policy is None:
+            return None
+
         scores = []
         reactants = []
         templates = []
@@ -305,6 +311,10 @@ class MCTS_A:
 
 
 def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simulations, cpuct, times=500):
+    # 멀티프로세싱 환경: 각 자식 프로세스에서 RDKit 로거 비활성화
+    from rdkit import RDLogger
+    RDLogger.DisableLog('rdApp.*')
+
     routes = []
     templates = []
     successes = []

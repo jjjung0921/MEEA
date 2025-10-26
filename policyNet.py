@@ -25,10 +25,13 @@ from time import strftime, localtime
 import numpy as np
 import gzip
 import pickle
-from rdkit import Chem, DataStructs
-from rdkit.Chem import AllChem
+from rdkit import Chem, DataStructs, RDLogger
+from rdkit.Chem import AllChem, rdFingerprintGenerator
 from collections import defaultdict, OrderedDict
 from rdchiral.main import rdchiralRunText, rdchiralRun  # 키랄성을 고려한 반응 적용
+
+# RDKit 경고 메시지 비활성화
+RDLogger.DisableLog('rdApp.*')
 
 
 def preprocess(X, fp_dim):
@@ -43,8 +46,9 @@ def preprocess(X, fp_dim):
         numpy.ndarray: 이진 fingerprint 배열
     """
     mol = Chem.MolFromSmiles(X)
-    # 키랄성을 고려한 Morgan Fingerprint 생성 (반지름 2)
-    fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=int(fp_dim), useChirality=True)
+    # 키랄성을 고려한 Morgan Fingerprint 생성 (반지름 2) - 최신 API 사용
+    generator = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=int(fp_dim), includeChirality=True)
+    fp = generator.GetFingerprint(mol)
     onbits = list(fp.GetOnBits())
     arr = np.zeros(fp.GetNumBits())
     arr[onbits] = 1

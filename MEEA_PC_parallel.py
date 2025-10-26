@@ -12,9 +12,12 @@ from policyNet import MLPModel  # 정책 네트워크 모델
 import os  # 운영체제 인터페이스
 import warnings  # 경고 억제
 warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
-from rdkit import Chem  # 분자 구조 처리
-from rdkit.Chem import AllChem  # 화학 정보학 알고리즘
+from rdkit import Chem, RDLogger  # 분자 구조 처리
+from rdkit.Chem import AllChem, rdFingerprintGenerator  # 화학 정보학 알고리즘
 import pandas as pd  # 데이터 프레임 처리
+
+# RDKit 경고 메시지 비활성화
+RDLogger.DisableLog('rdApp.*')
 
 # 타임아웃 예외 정의
 class TimeoutException(Exception): pass
@@ -64,7 +67,9 @@ def smiles_to_fp(s, fp_dim=2048, pack=False):
         numpy.ndarray: 분자의 fingerprint 벡터
     """
     mol = Chem.MolFromSmiles(s)  # SMILES를 RDKit 분자 객체로 변환
-    fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=fp_dim)  # Morgan FP 생성 (반지름 2)
+    # Morgan FP 생성 (반지름 2) - 최신 API 사용
+    generator = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=fp_dim)
+    fp = generator.GetFingerprint(mol)
     onbits = list(fp.GetOnBits())  # 활성화된 비트 인덱스 추출
     arr = np.zeros(fp.GetNumBits(), dtype=bool)  # 영벡터 생성
     arr[onbits] = 1  # 활성 비트 설정
@@ -569,6 +574,10 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         cpuct: UCT 파라미터
         times: 최대 반복 횟수
     """
+    # 멀티프로세싱 환경: 각 자식 프로세스에서 RDKit 로거 비활성화
+    from rdkit import RDLogger
+    RDLogger.DisableLog('rdApp.*')
+
     routes = []
     templates = []
     successes = []
