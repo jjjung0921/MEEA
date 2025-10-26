@@ -184,6 +184,7 @@ class MCTS_A:
         self.min_max_stats.update(self.root.f)
         self.opening_size = simulations
         self.iterations = 0
+        self.last_logged_iteration = -1
 
     def select_a_leaf(self):
         current = self.root
@@ -291,9 +292,14 @@ class MCTS_A:
                 self.update(expand_node)
 
             # 진행 상황 출력
-            if (self.iterations % progress_interval == 0 or self.iterations == 1) and self.iterations <= times:
+            if (
+                self.iterations > self.last_logged_iteration
+                and (self.iterations % progress_interval == 0 or self.iterations == 1)
+                and self.iterations <= times
+            ):
                 thread_prefix = f"[Thread {self.thread_id}] " if self.thread_id is not None else ""
                 print(f"{thread_prefix}[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
+                self.last_logged_iteration = self.iterations
 
             if self.visited_policy[self.target_mol] is None:
                 return False, None, times

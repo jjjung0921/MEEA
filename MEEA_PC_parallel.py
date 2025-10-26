@@ -366,6 +366,7 @@ class MCTS_A:
         self.min_max_stats.update(self.root.f)  # 루트의 f 값으로 초기화
         self.opening_size = simulations  # 한 번에 선택할 리프 노드 수
         self.iterations = 0  # 현재까지의 반복 횟수
+        self.last_logged_iteration = -1  # 마지막으로 로그 출력한 반복 횟수
 
     def select_a_leaf(self):
         """
@@ -523,9 +524,14 @@ class MCTS_A:
                 self.update(expand_node)  # 통계 업데이트
 
             # 진행 상황 출력
-            if (self.iterations % progress_interval == 0 or self.iterations == 1) and self.iterations <= times:
+            if (
+                self.iterations > self.last_logged_iteration
+                and (self.iterations % progress_interval == 0 or self.iterations == 1)
+                and self.iterations <= times
+            ):
                 thread_prefix = f"[Thread {self.thread_id}] " if self.thread_id is not None else ""
                 print(f"{thread_prefix}[MCTS] target={self.target_mol} iterations={self.iterations}/{times}", flush=True)
+                self.last_logged_iteration = self.iterations
 
             # 목표 분자를 확장할 수 없는 경우 (정책이 None)
             if self.visited_policy[self.target_mol] is None:
