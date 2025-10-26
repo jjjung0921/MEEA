@@ -12,7 +12,7 @@ from policyNet import MLPModel
 import warnings
 warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
 from rdkit import Chem
-from rdkit.Chem import AllChem
+from rdkit.Chem import AllChem, rdFingerprintGenerator
 class TimeoutException(Exception): pass
 
 
@@ -29,7 +29,8 @@ def time_limit(seconds):
 
 def smiles_to_fp(s, fp_dim=2048, pack=False):
     mol = Chem.MolFromSmiles(s)
-    fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=fp_dim)
+    generator = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=fp_dim)
+    fp = generator.GetFingerprint(mol)
     onbits = list(fp.GetOnBits())
     arr = np.zeros(fp.GetNumBits(), dtype=bool)
     arr[onbits] = 1
