@@ -12,6 +12,12 @@ import os
 import pickle
 from multiprocessing import Process
 
+import torch
+
+from MEEA_A import MEEAAStar
+from MEEA_MCTS import MEEAMCTS
+from MEEA_PC_parallel import prepare_expand, prepare_starting_molecules, prepare_value
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Parallel launcher for MEEA variants over GPUs 1,2,3.")
@@ -35,25 +41,50 @@ def parse_args():
 
 
 def worker(mode, gpu_id, batch, args):
-    # Restrict visible devices so inside the script GPU 0 maps to the assigned device.
+    # Restrict visible devices so inside the process GPU 0 maps to the assigned device.
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+
+    # Load models once per worker to avoid repeatedly loading template rules and weights.
+    local_gpu = 0 if gpu_id >= 0 else -1
+    device = torch.device("cpu" if local_gpu < 0 else f"cuda:{local_gpu}")
+    known_mols = prepare_starting_molecules()
+    expand_fn = prepare_expand(args.policy, local_gpu)
+    value_model = prepare_value(args.value, local_gpu)
+
     for smi in batch:
-        if mode == "a_star":
-            cmd = (
-                f'python MEEA_A.py --target "{smi}" '
-                f"--policy {args.policy} --value {args.value} "
-                f"--gpu 0 --max-expansions {args.max_expansions} --topk {args.topk}"
+        try:
+            if mode == "a_star":
+                planner = MEEAAStar(
+                    smi,
+                    known_mols,
+                    value_model,
+                    expand_fn,
+                    device=device,
+                    topk=args.topk,
+                    max_expansions=args.max_expansions,
+                )
+            else:
+                planner = MEEAMCTS(
+                    smi,
+                    known_mols,
+                    value_model,
+                    expand_fn,
+                    device=device,
+                    cpuct=args.cpuct,
+                    topk=args.topk,
+                    max_rollouts=args.max_rollouts,
+                    dirichlet_alpha=args.dirichlet_alpha,
+                    dirichlet_frac=args.dirichlet_frac,
+                )
+            success, node, calls = planner.search()
+            route, templates = planner.vis_synthetic_path(node)
+            depth = node.depth if success and node is not None else -1
+            print(
+                f"[GPU {gpu_id}] target={smi} success={success} depth={depth} calls={calls} route={route}",
+                flush=True,
             )
-        else:
-            cmd = (
-                f'python MEEA_MCTS.py --target "{smi}" '
-                f"--policy {args.policy} --value {args.value} "
-                f"--gpu 0 --topk {args.topk} --cpuct {args.cpuct} "
-                f"--max-rollouts {args.max_rollouts} "
-                f"--dirichlet-alpha {args.dirichlet_alpha} --dirichlet-frac {args.dirichlet_frac}"
-            )
-        print(f"[GPU {gpu_id}] {cmd}", flush=True)
-        os.system(cmd)
+        except Exception as e:
+            print(f"[GPU {gpu_id}] target={smi} failed: {type(e).__name__}: {e}", flush=True)
 
 
 def main():
