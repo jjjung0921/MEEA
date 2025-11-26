@@ -721,8 +721,8 @@ if __name__ == '__main__':
         one_steps.append(one_step)
         devices.append(device)
 
-    # 테스트할 데이터셋 리스트
-    dataset = ['USPTO', 'ClinTox', 'logS', 'Toxicity_LD50', 'BBBP', 'Ames', 'logP', 'bace', 'DPP4', 'SVS']
+    # 테스트할 데이터셋 리스트 (USPTO만 테스트)
+    dataset = ['USPTO']
 
     # 각 데이터셋에 대해 실행
     for data in dataset:
