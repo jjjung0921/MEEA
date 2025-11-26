@@ -671,7 +671,7 @@ def gather(dataset, simulations, cpuct, times, elapsed_time):
     depth = np.mean(result['depth'])  # 평균 깊이
 
     # 결과 요약을 텍스트 파일에 추가
-    fr = open('result_simulation.txt', 'a')
+    fr = open('result_simulation_MCTS.txt', 'a')
     # Format: dataset, simulations, times, cpuct, success_rate, avg_depth, elapsed_time(s), elapsed_time(h:m:s)
     hours = int(elapsed_time // 3600)
     minutes = int((elapsed_time % 3600) // 60)
