@@ -141,7 +141,7 @@ class Node:
     MCTS(Monte Carlo Tree Search) 트리의 노드 클래스
     역합성 경로 탐색을 위한 탐색 트리의 각 상태를 나타냄
     """
-    def __init__(self, state, h, prior, cost=0, action_mol=None, fmove=0, reaction=None, template=None, parent=None, cpuct=1.5):
+    def __init__(self, state, h, prior, cost=0, action_mol=None, fmove=0, reaction=None, template=None, parent=None, cpuct=0):
         """
         Args:
             state: 현재 상태의 분자 리스트
@@ -706,7 +706,7 @@ if __name__ == '__main__':
 
     # GPU 할당: GPU 4번만 사용 (28개 워커 모두 GPU 4번 사용)
     # CUDA_VISIBLE_DEVICES=4로 설정되어 있으므로 PyTorch는 디바이스 0번으로 인식
-    gpus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    gpus = [1, 2, 1, 1, 2, 2, 1, 2, 1, 1, 2, 2, 1, 2, 1, 1, 2, 2, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1]
 
     # 모델 파일 경로
     model_path = './saved_model/policy_model.ckpt'
