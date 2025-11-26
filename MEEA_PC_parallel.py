@@ -1,4 +1,5 @@
 # 필수 라이브러리 임포트
+import argparse  # 커맨드라인 인자 파싱
 import pickle  # 데이터 직렬화를 위한 라이브러리
 from multiprocessing import Process  # 병렬 처리를 위한 프로세스 생성
 import multiprocessing  # 멀티프로세싱 관련 유틸리티
@@ -9,6 +10,7 @@ import signal  # 시그널 처리 (타임아웃 구현용)
 import time  # 시간 측정
 from contextlib import contextmanager  # 컨텍스트 매니저 데코레이터
 from policyNet import MLPModel  # 정책 네트워크 모델
+from policyNet_variants import PolicyVariantModel  # Transformer 정책 네트워크
 import os  # 운영체제 인터페이스
 import warnings  # 경고 억제
 warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
@@ -274,13 +276,17 @@ def prepare_value(model_f, gpu=None):
     model.eval()  # 평가 모드로 설정
     return model
 
-def prepare_expand(model_path, gpu=-1):
+def prepare_expand(model_path, template_path, gpu=-1, policy_type='mlp', fp_dim=2048, transformer_kwargs=None):
     """
     확장(expansion) 함수 모델 준비 - 역합성 반응 예측 모델
 
     Args:
         model_path: 정책 모델 경로
+        template_path: 템플릿 규칙 파일 경로
         gpu: GPU 번호 (-1이면 CPU 사용)
+        policy_type: 'mlp' 또는 'transformer'
+        fp_dim: fingerprint 차원
+        transformer_kwargs: Transformer 하이퍼파라미터(dict)
 
     Returns:
         MLPModel: 로드된 정책 네트워크 모델
@@ -289,9 +295,21 @@ def prepare_expand(model_path, gpu=-1):
         device = 'cpu'
     else:
         device = 'cuda:' + str(gpu)
-    # 템플릿 기반 역합성 예측 모델 로드
-    one_step = MLPModel(model_path, './saved_model/template_rules.dat', device=device)
-    return one_step
+
+    if policy_type == 'mlp':
+        return MLPModel(model_path, template_path, device=device, fp_dim=fp_dim)
+    elif policy_type == 'transformer':
+        kwargs = transformer_kwargs or {}
+        return PolicyVariantModel(
+            model_type='transformer',
+            state_path=model_path,
+            template_path=template_path,
+            device=device,
+            fp_dim=fp_dim,
+            model_kwargs=kwargs
+        )
+    else:
+        raise ValueError(f"Unsupported policy_type: {policy_type}")
 
 
 
@@ -689,6 +707,29 @@ if __name__ == '__main__':
     """
     메인 실행 블록: 병렬 역합성 경로 탐색 실행
     """
+    parser = argparse.ArgumentParser(description='MEEA parallel planner')
+    parser.add_argument('--policy-type', default='mlp', choices=['mlp', 'transformer'], help='choose policy network type')
+    parser.add_argument('--policy-model', default='./saved_model/policy_model.ckpt', help='path to policy model checkpoint')
+    parser.add_argument('--template-path', default='./saved_model/template_rules.dat', help='path to template rules file')
+    parser.add_argument('--fp-dim', type=int, default=2048, help='fingerprint dimension')
+    # Transformer-specific args (ignored for mlp)
+    parser.add_argument('--patch-size', type=int, default=32, help='transformer patch size')
+    parser.add_argument('--d-model', type=int, default=128, help='transformer embedding dim')
+    parser.add_argument('--nhead', type=int, default=4, help='transformer num heads')
+    parser.add_argument('--num-layers', type=int, default=2, help='transformer encoder layers')
+    parser.add_argument('--dim-feedforward', type=int, default=256, help='transformer ff dim')
+    parser.add_argument('--dropout', type=float, default=0.1, help='transformer dropout')
+    args = parser.parse_args()
+
+    transformer_kwargs = dict(
+        patch_size=args.patch_size,
+        d_model=args.d_model,
+        nhead=args.nhead,
+        num_layers=args.num_layers,
+        dim_feedforward=args.dim_feedforward,
+        dropout=args.dropout,
+    )
+
     # 알려진 시작 분자 로드
     known_mols = prepare_starting_molecules()
 
@@ -709,12 +750,19 @@ if __name__ == '__main__':
     gpus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # 모델 파일 경로
-    model_path = './saved_model/policy_model.ckpt'
+    model_path = args.policy_model
     model_f = './saved_model/value_pc.pt'
 
     # 각 워커를 위한 모델 로드
     for i in range(len(gpus)):
-        one_step = prepare_expand(model_path, gpus[i])  # 정책 모델
+        one_step = prepare_expand(
+            model_path,
+            args.template_path,
+            gpus[i],
+            policy_type=args.policy_type,
+            fp_dim=args.fp_dim,
+            transformer_kwargs=transformer_kwargs if args.policy_type == 'transformer' else None
+        )  # 정책 모델
         device = torch.device('cuda:' + str(gpus[i]))
         value_model = prepare_value(model_f, gpus[i])  # 가치 모델
         value_models.append(value_model)
