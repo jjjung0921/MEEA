@@ -379,7 +379,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         pickle.dump(ans, writer, protocol=4)
 
 
-def gather(dataset, simulations, cpuct, times, elapsed_time):
+def gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mode=True):
     result = {
         'route': [],
         'template': [],
@@ -402,7 +402,7 @@ def gather(dataset, simulations, cpuct, times, elapsed_time):
     minutes = int((elapsed_time % 3600) // 60)
     seconds = int(elapsed_time % 60)
     time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\n")
+    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\t{policy_name}\t{'NP' if np_mode else 'PC'}\n")
     f = open('./test/stat_norm_retro_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '_' + str(times) + '.pkl', 'wb')
     pickle.dump(result, f)
     f.close()
@@ -474,4 +474,5 @@ if __name__ == '__main__':
                 for j in jobs:
                     j.join()
                 elapsed_time = time.time() - start_time
-                gather(dataset, simulations, cpuct, times, elapsed_time)
+                policy_name = os.path.basename(model_path)
+                gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mode=True)

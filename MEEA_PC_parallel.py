@@ -655,7 +655,7 @@ def play(dataset, mols, thread, known_mols, value_model, expand_fn, device, simu
         pickle.dump(ans, writer, protocol=4)
 
 
-def gather(dataset, simulations, cpuct, times, elapsed_time):
+def gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mode=False):
     """
     병렬 프로세스에서 생성된 결과 파일들을 수집하고 통합
 
@@ -665,6 +665,7 @@ def gather(dataset, simulations, cpuct, times, elapsed_time):
         cpuct: UCT 파라미터
         times: 최대 반복 횟수
         elapsed_time: 실행에 소요된 시간(초)
+        policy_name: 사용한 정책 모델 파일명
     """
     result = {
         'route': [],
@@ -695,7 +696,7 @@ def gather(dataset, simulations, cpuct, times, elapsed_time):
     minutes = int((elapsed_time % 3600) // 60)
     seconds = int(elapsed_time % 60)
     time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\n")
+    fr.write(f"{dataset}\t{simulations}\t{times}\t{cpuct}\t{success:.4f}\t{depth:.2f}\t{elapsed_time:.2f}\t{time_str}\t{policy_name}\t{'NP' if np_mode else 'PC'}\n")
 
     # 통합된 결과를 피클 파일로 저장
     f = open('./test/stat_pc_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '.pkl', 'wb')
@@ -806,4 +807,5 @@ if __name__ == '__main__':
             elapsed_time = time.time() - start_time
 
             # 결과 수집 및 통합
-            gather(data, simulations, cpuct, times, elapsed_time)
+            policy_name = os.path.basename(model_path)
+            gather(data, simulations, cpuct, times, elapsed_time, policy_name, np_mode=False)
