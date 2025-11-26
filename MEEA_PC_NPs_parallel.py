@@ -387,13 +387,21 @@ def gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mod
         'depth': [],
         'counts': []
     }
+    processed = 0
     for i in range(28):
         file = './test/stat_norm_retro_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '_' + str(i) + '.pkl'
+        if not os.path.exists(file):
+            continue
         with open(file, 'rb') as f:
             data = pickle.load(f)
         for key in result.keys():
             result[key] += data[key]
+        processed += 1
         os.remove(file)
+
+    if processed == 0:
+        print("No worker results found; skipping aggregation.", flush=True)
+        return
     success = np.mean(result['success'])
     depth = np.mean(result['depth'])
     fr = open('result_simulation.txt', 'a')

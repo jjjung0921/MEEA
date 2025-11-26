@@ -675,15 +675,23 @@ def gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mod
         'counts': []
     }
 
-    # 28개의 워커 프로세스 결과 수집
+    # 28개의 워커 프로세스 결과 수집 (없으면 건너뛰기)
+    processed = 0
     for i in range(28):
         file = './test/stat_norm_retro_' + dataset + '_' + str(simulations) + '_' + str(cpuct) + '_' + str(i) + '.pkl'
+        if not os.path.exists(file):
+            continue
         with open(file, 'rb') as f:
             data = pickle.load(f)
         # 각 키의 데이터를 통합
         for key in result.keys():
             result[key] += data[key]
+        processed += 1
         os.remove(file)  # 개별 파일 삭제
+
+    if processed == 0:
+        print("No worker results found; skipping aggregation.", flush=True)
+        return
 
     # 통계 계산
     success = np.mean(result['success'])  # 성공률
