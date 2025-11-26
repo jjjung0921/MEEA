@@ -10,9 +10,15 @@ import argparse
 import math
 import os
 import pickle
+import sys
 from multiprocessing import Process
 
 import torch
+
+# Allow imports from project root when executed from scripts/ directory.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from MEEA_A import MEEAAStar
 from MEEA_MCTS import MEEAMCTS
