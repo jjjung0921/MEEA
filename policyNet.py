@@ -443,10 +443,13 @@ def train(net, dataTrain, dataTest, lr=0.001, batch_size=16, epochs=100, wd=0, s
         saved_model: 모델 저장 경로 접두사
     """
     it = trange(epochs)
-    # 주석 처리: GPU 병렬 학습 옵션
-    #device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    #net = nn.DataParallel(net, device_ids=[0, 1, 2, 3])
-    device = 'cpu'
+    # 가용 GPU를 사용해 병렬 학습 시도, 없으면 CPU 사용
+    if torch.cuda.is_available():
+        device = torch.device('cuda:0')
+        if torch.cuda.device_count() > 1:
+            net = nn.DataParallel(net)  # 모든 가용 GPU 자동 사용
+    else:
+        device = torch.device('cpu')
     net = net.to(device)
 
     # 옵티마이저 및 스케줄러 설정

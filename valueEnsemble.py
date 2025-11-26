@@ -35,6 +35,13 @@ def unpack_fps(packed_fps):
     Returns:
         numpy.ndarray: 해제된 float32 배열
     """
+    packed_fps = np.array(packed_fps)
+
+    # 이미 2048차원으로 풀린 경우 그대로 반환
+    if packed_fps.shape[-1] == 2048:
+        return packed_fps.astype(np.float32)
+
+    # packbits 형태(길이 256 등)만 언팩
     packed_fps = packed_fps.astype(np.uint8)
     shape = (*(packed_fps.shape[:-1]), -1)
     fps = np.unpackbits(packed_fps.reshape((-1, packed_fps.shape[-1])), axis=-1).astype(np.float32).reshape(shape)
@@ -177,7 +184,7 @@ class Trainer:
 
     각 배치마다 두 손실을 동시에 최적화
     """
-    def __init__(self, model, n_epochs, lr, batch_size, model_folder, device, test_epoch):
+    def __init__(self, model, n_epochs, lr, batch_size, model_folder, device, test_epoch, log_interval=10):
         """
         Args:
             model: ValueEnsemble 모델
@@ -187,8 +194,10 @@ class Trainer:
             model_folder: 모델 저장 폴더
             device: 연산 디바이스
             test_epoch: 평가 주기
+            log_interval: 중간 로그 출력 주기(에포크 기준)
         """
         self.batch_size = batch_size
+        self.log_interval = log_interval
 
         # 학습 데이터 로드 - 일관성 학습용
         file = './data/train_consistency.pkl'
@@ -287,12 +296,12 @@ class Trainer:
 
         # === Fitting Loss 계산 ===
         fps, values, masks = fitting_data['fps'], fitting_data['values'], fitting_data['masks']
-        fps = torch.FloatTensor(fps).to(self.device)
-        values = torch.FloatTensor(values).to(self.device).reshape(-1)
-        masks = torch.FloatTensor(masks).to(self.device)
+        fps = torch.tensor(np.asarray(fps, dtype=np.float32), device=self.device)
+        values = torch.tensor(np.asarray(values, dtype=np.float32), device=self.device).reshape(-1)
+        masks = torch.tensor(np.asarray(masks, dtype=np.float32), device=self.device)
 
         # 분자 개수에 따른 가중치 (적은 분자 = 높은 가중치)
-        weight = torch.FloatTensor(np.array([1 / self.num_mols] * len(values)).astype(np.float32)).to(device)
+        weight = torch.tensor(np.array([1 / self.num_mols] * len(values), dtype=np.float32), device=self.device)
 
         v_pred = self.model(fps, masks)
         fitting_loss = self.fitting_criterion(v_pred.reshape(-1), values)
@@ -300,10 +309,10 @@ class Trainer:
 
         # === Consistency Loss 계산 ===
         reaction_costs, target_values, reactant_fps, reactant_masks = consistency_data
-        reaction_costs = torch.FloatTensor(reaction_costs).to(self.device).reshape(-1)
-        target_values = torch.FloatTensor(target_values).to(self.device).reshape(-1)
-        reactant_fps = torch.FloatTensor(reactant_fps).to(self.device)
-        reactant_masks = torch.FloatTensor(reactant_masks).to(self.device)
+        reaction_costs = torch.as_tensor(reaction_costs, dtype=torch.float32, device=self.device).reshape(-1)
+        target_values = torch.as_tensor(target_values, dtype=torch.float32, device=self.device).reshape(-1)
+        reactant_fps = torch.as_tensor(reactant_fps, dtype=torch.float32, device=self.device)
+        reactant_masks = torch.as_tensor(reactant_masks, dtype=torch.float32, device=self.device)
 
         r_values = self.model(reactant_fps, reactant_masks)
 
@@ -323,6 +332,7 @@ class Trainer:
         line = str(loss.item()) + '\t' + str(fitting_loss.item()) + '\t' + str(consistency_loss.item()) + '\n'
         fr.write(line)
         fr.close()
+        return loss.item(), fitting_loss.item(), consistency_loss.item()
 
     def eval(self):
         """
@@ -339,10 +349,10 @@ class Trainer:
         # Consistency Loss 평가
         for batch in self.val_consistency_loader:
             reaction_costs, target_values, reactant_fps, reactant_masks = batch
-            reaction_costs = torch.FloatTensor(reaction_costs).to(self.device).reshape(-1)
-            target_values = torch.FloatTensor(target_values).to(self.device).reshape(-1)
-            reactant_fps = torch.FloatTensor(reactant_fps).to(self.device)
-            reactant_masks = torch.FloatTensor(reactant_masks).to(self.device)
+            reaction_costs = torch.as_tensor(reaction_costs, dtype=torch.float32, device=self.device).reshape(-1)
+            target_values = torch.as_tensor(target_values, dtype=torch.float32, device=self.device).reshape(-1)
+            reactant_fps = torch.as_tensor(reactant_fps, dtype=torch.float32, device=self.device)
+            reactant_masks = torch.as_tensor(reactant_masks, dtype=torch.float32, device=self.device)
 
             r_values = self.model(reactant_fps, reactant_masks)
             r_gap = - r_values - reaction_costs + target_values + 7.
@@ -352,9 +362,18 @@ class Trainer:
         # Fitting Loss 평가
         for batch in self.val_fitting_loader:
             fps, values, masks = batch
-            fps = torch.FloatTensor(fps).to(self.device)
-            values = torch.FloatTensor(values).to(self.device).reshape(-1)
-            masks = torch.FloatTensor(masks).to(self.device)
+            fps = torch.as_tensor(fps, dtype=torch.float32, device=self.device)
+            values = torch.as_tensor(values, dtype=torch.float32, device=self.device).reshape(-1)
+            masks = torch.as_tensor(masks, dtype=torch.float32, device=self.device)
+
+            # val_fitting은 단일 분자 fps(배치,2048) 형태가 올 수 있으므로 3차원으로 패딩
+            if fps.dim() == 2:
+                fps = fps.unsqueeze(1)  # (B,1,2048)
+            if fps.size(1) < masks.size(1):
+                bsz, target_mols, fp_dim = fps.size(0), masks.size(1), fps.size(2)
+                padded = torch.zeros((bsz, target_mols, fp_dim), device=self.device, dtype=fps.dtype)
+                padded[:, :fps.size(1), :] = fps
+                fps = padded
 
             v_pred = self.model(fps, masks)
             fitting_loss.append(F.mse_loss(v_pred.reshape(-1), values).item())
@@ -415,7 +434,11 @@ class Trainer:
             fitting_batch = self.sample(num_mols, self.batch_size)
 
             # 학습
-            self._pass(consistency_batch, fitting_batch)
+            total_loss, fit_loss, cons_loss = self._pass(consistency_batch, fitting_batch)
+
+            # 중간 로그 출력
+            if (epoch + 1) % self.log_interval == 0:
+                print(f"[Train] Epoch {epoch + 1} | total: {total_loss:.4f} | fit: {fit_loss:.4f} | cons: {cons_loss:.4f}", flush=True)
 
             # 주기적 평가 및 저장
             if (epoch + 1) % self.test_epoch == 0:
@@ -442,12 +465,12 @@ if __name__ == '__main__':
     model_folder = './model'
     device = 'cuda:0'
     test_epoch = 100  # 평가 주기
+    log_interval = 100  # 중간 로그 출력 주기(에포크 기준)
 
     # 모델 생성 및 병렬화
     model = ValueEnsemble(2048, 128, dropout_rate=0.1)
     model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])  # 4개 GPU 사용
 
     # 트레이너 생성 및 학습 시작
-    trainer = Trainer(model, n_epochs, lr, batch_size, model_folder, device, test_epoch)
+    trainer = Trainer(model, n_epochs, lr, batch_size, model_folder, device, test_epoch, log_interval=log_interval)
     trainer.train()
-
