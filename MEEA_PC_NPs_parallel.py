@@ -1,3 +1,4 @@
+import argparse
 import pickle
 from multiprocessing import Process
 import multiprocessing
@@ -9,6 +10,7 @@ import os
 import time
 from contextlib import contextmanager
 from policyNet import MLPModel
+from policyNet_variants import PolicyVariantModel
 import warnings
 warnings.filterwarnings('ignore')  # RDKit 및 기타 deprecation 경고 억제
 from rdkit import RDLogger
@@ -74,13 +76,25 @@ def prepare_starting_molecules_natural():
     return data
 
 
-def prepare_expand(model_path, gpu=-1):
+def prepare_expand(model_path, template_path, gpu=-1, policy_type='mlp', fp_dim=2048, transformer_kwargs=None):
     if gpu == -1:
         device = 'cpu'
     else:
         device = 'cuda:' + str(gpu)
-    one_step = MLPModel(model_path, './saved_model/template_rules.dat', device=device)
-    return one_step
+    if policy_type == 'mlp':
+        return MLPModel(model_path, template_path, device=device, fp_dim=fp_dim)
+    elif policy_type == 'transformer':
+        kwargs = transformer_kwargs or {}
+        return PolicyVariantModel(
+            model_type='transformer',
+            state_path=model_path,
+            template_path=template_path,
+            device=device,
+            fp_dim=fp_dim,
+            model_kwargs=kwargs
+        )
+    else:
+        raise ValueError(f"Unsupported policy_type: {policy_type}")
 
 
 def prepare_value(model_f, gpu=None):
@@ -395,6 +409,29 @@ def gather(dataset, simulations, cpuct, times, elapsed_time):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='MEEA PC NP planner')
+    parser.add_argument('--policy-type', default='mlp', choices=['mlp', 'transformer'], help='policy network type')
+    parser.add_argument('--policy-model', default='./saved_model/policy_model.ckpt', help='path to policy model checkpoint')
+    parser.add_argument('--template-path', default='./saved_model/template_rules.dat', help='path to template rules file')
+    parser.add_argument('--fp-dim', type=int, default=2048, help='fingerprint dimension')
+    # Transformer-specific
+    parser.add_argument('--patch-size', type=int, default=32, help='transformer patch size')
+    parser.add_argument('--d-model', type=int, default=128, help='transformer embedding dim')
+    parser.add_argument('--nhead', type=int, default=4, help='transformer num heads')
+    parser.add_argument('--num-layers', type=int, default=2, help='transformer encoder layers')
+    parser.add_argument('--dim-feedforward', type=int, default=256, help='transformer ff dim')
+    parser.add_argument('--dropout', type=float, default=0.1, help='transformer dropout')
+    args = parser.parse_args()
+
+    transformer_kwargs = dict(
+        patch_size=args.patch_size,
+        d_model=args.d_model,
+        nhead=args.nhead,
+        num_layers=args.num_layers,
+        dim_feedforward=args.dim_feedforward,
+        dropout=args.dropout,
+    )
+
     known_mols = prepare_starting_molecules_natural()
     simulations = 100
     cpuct = 4.0
@@ -402,11 +439,18 @@ if __name__ == '__main__':
     one_steps = []
     devices = []
     value_models = []
-    model_path = './saved_model/policy_model.ckpt'
+    model_path = args.policy_model
     model_f = './saved_model/value_pc.pt'
     gpus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     for i in range(len(gpus)):
-        one_step = prepare_expand(model_path, gpus[i])
+        one_step = prepare_expand(
+            model_path,
+            args.template_path,
+            gpus[i],
+            policy_type=args.policy_type,
+            fp_dim=args.fp_dim,
+            transformer_kwargs=transformer_kwargs if args.policy_type == 'transformer' else None
+        )
         device = torch.device('cuda:' + str(gpus[i]))
         value_model = prepare_value(model_f, gpus[i])
         value_models.append(value_model)

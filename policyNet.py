@@ -154,6 +154,9 @@ def load_parallel_model(state_path, template_rule_path, fp_dim=2048):
     # 모델 생성 및 가중치 로드
     rollout = RolloutPolicyNet(len(template_rules), fp_dim=fp_dim)
     checkpoint = torch.load(state_path, map_location='cpu')
+    # DataParallel로 학습된 경우 'module.' 접두사를 제거
+    if any(k.startswith('module.') for k in checkpoint.keys()):
+        checkpoint = {k.replace('module.', '', 1): v for k, v in checkpoint.items()}
     rollout.load_state_dict(checkpoint)
 
     # 주석 처리된 코드: DataParallel로 학습된 모델을 로드할 때 사용
