@@ -19,7 +19,7 @@ from policyNet import preprocess, merge, train
 
 
 class DropoutPolicyNet(nn.Module):
-    """Two hidden-layer MLP with dropout on every block."""
+    """Two hidden-layer MLP with GELU and dropout on every block."""
 
     def __init__(self, n_rules: int, fp_dim: int = 2048, hidden: int = 512, dropout_rate: float = 0.4):
         super().__init__()
@@ -28,11 +28,11 @@ class DropoutPolicyNet(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(fp_dim, hidden),
             nn.BatchNorm1d(hidden),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden, hidden),
             nn.BatchNorm1d(hidden),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden, n_rules),
         )
