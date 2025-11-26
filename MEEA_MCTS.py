@@ -7,6 +7,7 @@ best-of-openings selection used in MEEA*.
 """
 
 import argparse
+import time
 import numpy as np
 import torch
 
@@ -250,7 +251,9 @@ def main():
         dirichlet_alpha=args.dirichlet_alpha,
         dirichlet_frac=args.dirichlet_frac,
     )
+    start_time = time.time()
     success, node, calls = planner.search()
+    elapsed = time.time() - start_time
     route, templates = planner.vis_synthetic_path(node)
 
     # Save results so multiple runs can be collected in one place.
@@ -259,6 +262,7 @@ def main():
             f"[MCTS] Target: {args.target}\n"
             f"Success: {success}\n"
             f"Iterations (policy calls): {calls}\n"
+            f"Elapsed (s): {elapsed:.2f}\n"
             f"Route: {route}\n"
             f"Templates: {templates}\n"
             "---\n"
@@ -266,6 +270,7 @@ def main():
 
     print(f"Success: {success}")
     print(f"Iterations (policy calls): {calls}")
+    print(f"Elapsed (s): {elapsed:.2f}")
     print("Route:", route)
     print("Templates:", templates)
 
