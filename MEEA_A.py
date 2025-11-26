@@ -188,6 +188,17 @@ def main():
     success, node, calls = planner.search()
     route, templates = planner.vis_synthetic_path(node)
 
+    # Save results so multiple runs can be collected in one place.
+    with open("A_star.txt", "a") as f:
+        f.write(
+            f"Target: {args.target}\n"
+            f"Success: {success}\n"
+            f"Iterations (policy calls): {calls}\n"
+            f"Route: {route}\n"
+            f"Templates: {templates}\n"
+            "---\n"
+        )
+
     print(f"Success: {success}")
     print(f"Iterations (policy calls): {calls}")
     print("Route:", route)
