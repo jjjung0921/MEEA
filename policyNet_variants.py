@@ -142,6 +142,9 @@ def load_policy_variant(
         raise ValueError(f"Unknown model_type: {model_type}")
 
     checkpoint = torch.load(state_path, map_location="cpu")
+    # DataParallel로 학습된 경우 키 앞의 'module.' 접두사를 제거
+    if any(k.startswith("module.") for k in checkpoint.keys()):
+        checkpoint = {k.replace("module.", "", 1): v for k, v in checkpoint.items()}
     net.load_state_dict(checkpoint)
     return net, idx2rule
 
