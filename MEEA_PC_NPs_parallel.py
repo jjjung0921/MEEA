@@ -76,12 +76,22 @@ def prepare_starting_molecules_natural():
     return data
 
 
-def prepare_expand(model_path, template_path, gpu=-1, policy_type='mlp', fp_dim=2048, transformer_kwargs=None):
+def prepare_expand(
+    model_path,
+    template_path,
+    gpu=-1,
+    policy_type='mlp',
+    fp_dim=2048,
+    transformer_kwargs=None,
+    dropout_rate=None,
+):
     if gpu == -1:
         device = 'cpu'
     else:
         device = 'cuda:' + str(gpu)
     if policy_type == 'mlp':
+        return MLPModel(model_path, template_path, device=device, fp_dim=fp_dim)
+    elif policy_type == 'dropout':
         return MLPModel(model_path, template_path, device=device, fp_dim=fp_dim)
     elif policy_type == 'transformer':
         kwargs = transformer_kwargs or {}
@@ -418,10 +428,11 @@ def gather(dataset, simulations, cpuct, times, elapsed_time, policy_name, np_mod
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='MEEA PC NP planner')
-    parser.add_argument('--policy-type', default='mlp', choices=['mlp', 'transformer'], help='policy network type')
+    parser.add_argument('--policy-type', default='mlp', choices=['mlp', 'dropout', 'transformer'], help='policy network type')
     parser.add_argument('--policy-model', default='./saved_model/policy_model.ckpt', help='path to policy model checkpoint')
     parser.add_argument('--template-path', default='./saved_model/template_rules.dat', help='path to template rules file')
     parser.add_argument('--fp-dim', type=int, default=2048, help='fingerprint dimension')
+    parser.add_argument('--dropout-rate', type=float, default=0.4, help='dropout rate for dropout policy')
     # Transformer-specific
     parser.add_argument('--patch-size', type=int, default=32, help='transformer patch size')
     parser.add_argument('--d-model', type=int, default=128, help='transformer embedding dim')
@@ -457,7 +468,8 @@ if __name__ == '__main__':
             gpus[i],
             policy_type=args.policy_type,
             fp_dim=args.fp_dim,
-            transformer_kwargs=transformer_kwargs if args.policy_type == 'transformer' else None
+            transformer_kwargs=transformer_kwargs if args.policy_type == 'transformer' else None,
+            dropout_rate=args.dropout_rate if args.policy_type == 'dropout' else None
         )
         device = torch.device('cuda:' + str(gpus[i]))
         value_model = prepare_value(model_f, gpus[i])
