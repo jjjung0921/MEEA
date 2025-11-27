@@ -449,7 +449,7 @@ if __name__ == '__main__':
     value_models = []
     model_path = args.policy_model
     model_f = './saved_model/value_pc.pt'
-    gpus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    gpus = [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
     for i in range(len(gpus)):
         one_step = prepare_expand(
             model_path,
