@@ -8,6 +8,8 @@ Alternative policy networks that keep the same fingerprint input as policyNet:
 
 import gzip
 import pickle
+import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -109,6 +111,82 @@ class TransformerPolicyNet(nn.Module):
         x = self.encoder(x)
         x = x.mean(dim=1)  # simple global average pooling
         logits = self.head(x)
+        if y is not None:
+            return loss_fn(logits, y)
+        return logits
+
+
+SMILES_TOKEN_RE = re.compile(
+    r"(\[[^\]]+\]|Br|Cl|Si|Se|se|@@|@|=|#|\$|:|/|\\|\+|-|\(|\)|\.|%\d{2}|\d|[A-Za-z])"
+)
+
+PAD, CLS, UNK = 0, 1, 2
+
+
+def tokenize_smiles(smiles: str):
+    """Split a SMILES string into chemically meaningful tokens."""
+    return SMILES_TOKEN_RE.findall(smiles)
+
+
+def build_smiles_vocab(smiles_list, min_freq: int = 1) -> Dict[str, int]:
+    counter = Counter()
+    for s in smiles_list:
+        counter.update(tokenize_smiles(s))
+    vocab = {"<pad>": PAD, "<cls>": CLS, "<unk>": UNK}
+    for tok, freq in counter.most_common():
+        if freq >= min_freq:
+            vocab[tok] = len(vocab)
+    return vocab
+
+
+def encode_smiles(smiles: str, vocab: Dict[str, int], max_len: int) -> list:
+    ids = [CLS] + [vocab.get(t, UNK) for t in tokenize_smiles(smiles)]
+    return ids[:max_len]
+
+
+class SmilesTransformerPolicyNet(nn.Module):
+    """
+    Transformer encoder over SMILES tokens.
+
+    The fingerprint variant has no meaningful token order, so positional
+    encoding and attention carry no signal there. SMILES tokens do carry
+    order, which is the input this architecture was built for.
+    """
+
+    def __init__(
+        self,
+        n_rules: int,
+        vocab_size: int,
+        d_model: int = 256,
+        nhead: int = 8,
+        num_layers: int = 4,
+        dim_feedforward: int = 512,
+        dropout: float = 0.1,
+        max_len: int = 256,
+    ):
+        super().__init__()
+        self.n_rules = n_rules
+        self.max_len = max_len
+        self.embed = nn.Embedding(vocab_size, d_model, padding_idx=PAD)
+        self.pos_encoder = PositionalEncoding(d_model, max_len=max_len)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, n_rules))
+
+    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+        # x: (batch, seq_len) token ids
+        pad_mask = x == PAD
+        h = self.embed(x)
+        h = self.pos_encoder(h)
+        h = self.encoder(h, src_key_padding_mask=pad_mask)
+        logits = self.head(h[:, 0])  # <cls> token
         if y is not None:
             return loss_fn(logits, y)
         return logits
@@ -258,6 +336,10 @@ def train_policy_variant(
 __all__ = [
     "DropoutPolicyNet",
     "TransformerPolicyNet",
+    "SmilesTransformerPolicyNet",
+    "build_smiles_vocab",
+    "encode_smiles",
+    "tokenize_smiles",
     "PolicyVariantModel",
     "train_policy_variant",
     "load_policy_variant",
