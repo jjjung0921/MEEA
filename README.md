@@ -40,6 +40,83 @@ To test on natural products
 ```
 python MEEA_PC_NPs_parallel.py
 ```
+## Policy backbone benchmark — SMILES vs fingerprint (desktop GPU)
+
+The policy network of the paper reads a 2048-bit Morgan fingerprint. A fingerprint
+has no meaningful token order, so a Transformer over fingerprint patches has no
+sequence to attend to; a Transformer over **SMILES tokens** does. This benchmark
+trains three backbones on identical data and reports top-1/10/50 and validation
+loss for each:
+
+| backbone | input | model |
+|---|---|---|
+| `mlp` | fingerprint bits | `RolloutPolicyNet` (the paper's) |
+| `fp_transformer` | fingerprint patches | `TransformerPolicyNet` |
+| `smiles_transformer` | SMILES tokens | `SmilesTransformerPolicyNet` |
+
+### 1. Environment (CUDA desktop, once)
+
+```bash
+conda create -n meea-gpu python=3.10 -y && conda activate meea-gpu
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements-gpu.txt
+pip install -e rdchiral
+python -c "import torch; print(torch.__version__, torch.cuda.get_device_name(0))"
+```
+
+### 2. Data
+
+The benchmark reads three files under `prepare_data/`, which git does not track:
+`policySmilesTrain.pkl.gz`, `policySmilesTest.pkl.gz`, `uspto_template.pkl.gz`.
+Copy the first two from a machine that already has them (3 MB), or regenerate
+them from `policyTrain/Test.pkl.gz` plus `data/uspto50k.tab`:
+
+```bash
+python scripts/build_smiles_policy_data.py
+```
+
+That recovers the SMILES behind every fingerprint row by re-fingerprinting the
+products of `uspto50k.tab` and matching the packed bits, so labels and the split
+stay exactly those of the original pickles. Rows absent from the 50k table are
+dropped, leaving **35,634 train / 8,903 val** reactions over 14,407 templates —
+the same subset for every backbone.
+
+### 3. Run
+
+```bash
+python scripts/run_backbone_benchmark.py --epochs 100 --batch-size 512 --amp
+```
+
+Trains all three backbones in turn and writes `results/backbones/summary.md`.
+A single backbone:
+
+```bash
+python scripts/compare_policy_backbones.py --model smiles_transformer --epochs 100 --batch-size 512 --amp
+```
+
+Flags: `--lr`, `--max-len` (SMILES truncation, default 160; the longest molecule
+here is 153 tokens), `--num-workers`, `--device cuda:0`, `--out-dir`.
+8 GB of VRAM is enough at batch 512 — drop to 256 if it ever runs out.
+
+### 4. Output
+
+Per backbone, under `results/backbones/`:
+
+- `<model>.json` — config plus per-epoch `train_loss`, `val_loss`, `top1`,
+  `top10`, `top50`, `elapsed_s`, and the best epoch under `best`
+- `<model>.ckpt` — weights of the best top-1 epoch
+- `smiles_transformer_vocab.json` — token vocabulary, needed for inference
+- `summary.md` — the comparison table
+
+Rebuild the table without retraining:
+
+```bash
+python scripts/run_backbone_benchmark.py --summary-only
+```
+
+Longer notes, including CPU reference numbers and why Apple MPS cannot run this,
+are in [docs/gpu-benchmark.md](docs/gpu-benchmark.md).
+
 ## Citation
 If you find this repo useful, please cite our paper:
 ```
