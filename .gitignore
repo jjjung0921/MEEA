@@ -52,3 +52,8 @@ test/
 
 meea_env
 meea_assets.zip
+# benchmark outputs
+results/
+
+# keep the GPU benchmark requirements despite the *.txt rule
+!requirements-gpu.txt

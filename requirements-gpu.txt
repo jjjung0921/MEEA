@@ -1,0 +1,7 @@
+# Desktop (CUDA) environment for the policy backbone benchmark.
+# torch is installed separately from the cu121 index, see docs/gpu-benchmark.md
+rdkit==2023.9.5
+numpy>=1.23,<2
+pandas>=1.5
+tqdm>=4.64
+scikit-learn>=1.2
