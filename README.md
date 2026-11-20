@@ -40,6 +40,24 @@ To test on natural products
 ```
 python MEEA_PC_NPs_parallel.py
 ```
+## Data pipeline
+
+`scripts/data/` rebuilds every data artifact from the sources the paper names —
+the Retro* USPTO package (reactions and the official split), eMolecules
+(building blocks) and the MSU 2D data library (the nine extra test sets) — and
+applies the paper's test-set filtering rules.
+
+```bash
+python scripts/data/fetch_sources.py --list
+```
+
+```bash
+python scripts/data/prepare_all.py --reactions <corpus file>
+```
+
+Stage-by-stage description, including what each stage writes and what it checks,
+is in [docs/data-pipeline.md](docs/data-pipeline.md).
+
 ## Policy backbone benchmark — SMILES vs fingerprint (desktop GPU)
 
 The policy network of the paper reads a 2048-bit Morgan fingerprint. A fingerprint
