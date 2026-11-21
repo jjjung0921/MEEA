@@ -1,0 +1,16 @@
+{
+  "smiles_transformer": {
+    "first_step_candidates": 4491,
+    "targets_with_stock_fragment": 9,
+    "targets_with_all_stock": 0,
+    "targets_with_all_canonical_stock": 0,
+    "no_first_step_candidate": 21
+  },
+  "smiles_bond_changes": {
+    "first_step_candidates": 4137,
+    "targets_with_stock_fragment": 9,
+    "targets_with_all_stock": 0,
+    "targets_with_all_canonical_stock": 0,
+    "no_first_step_candidate": 28
+  }
+}

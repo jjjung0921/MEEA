@@ -1,6 +1,7 @@
-"""Evaluate the BioNavi-NP ensemble with MEEA*-PC on the 388-target NP set."""
+"""Evaluate expansion policies with MEEA*-PC on the 388-target BioNavi-NP set."""
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import gzip
 import io
 import json
 import multiprocessing
@@ -16,9 +17,6 @@ sys.path[:0] = [str(ROOT), str(ROOT / "rdchiral"),
                 str(ROOT / "data/raw/BioNavi-NP/multistep/onmt")]
 
 import torch
-from onmt.bin.parser import Seq2seqArgs
-from onmt.bin.translate import run
-from onmt.translate.translator import build_translator
 
 from MEEA_PC_NPs_parallel import MCTS_A, TimeoutException, time_limit
 from valueEnsemble import ValueEnsemble
@@ -32,6 +30,11 @@ MAX_EXPANSIONS = 50
 
 class BioNaviPolicy:
     def __init__(self):
+        from onmt.bin.parser import Seq2seqArgs
+        from onmt.bin.translate import run
+        from onmt.translate.translator import build_translator
+
+        self.translate = run
         opt = Seq2seqArgs()
         opt.models = [str(ASSETS / "checkpoints" / f"model_step_{n}.pt")
                       for n in (30000, 50000, 80000, 100000)]
@@ -47,16 +50,28 @@ class BioNaviPolicy:
     def run(self, smiles):
         self.output.seek(0)
         self.output.truncate()
-        predictions = run(self.translator, self.opt, smiles)
+        predictions = self.translate(self.translator, self.opt, smiles)
         if not predictions["scores"]:
             return None
         return {**predictions, "template": [None] * len(predictions["scores"])}
 
 
-def initialize():
+class TemplatePolicy:
+    def __init__(self, name):
+        from scripts.benchmark_policy_search import SearchPolicy
+
+        with gzip.open(ROOT / "prepare_data/uspto_template.pkl.gz", "rb") as stream:
+            rules = pickle.load(stream)
+        self.policy = SearchPolicy(name, rules, device=DEVICE)
+
+    def run(self, smiles):
+        return self.policy.expand(smiles, topk=50)
+
+
+def initialize(policy_name):
     global policy, value, stock
     torch.set_num_threads(1)
-    policy = BioNaviPolicy()
+    policy = BioNaviPolicy() if policy_name == "bionavi_np" else TemplatePolicy(policy_name)
     with ZipFile(ARCHIVE) as archive:
         stock = {line.strip().split("\t")[-1] for line in archive.read(
             "MEEA_model/prepare_data/building_blocks.txt").decode().splitlines() if line.strip()}
@@ -90,11 +105,22 @@ def search(job):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=ROOT / "results/bionavi_np")
+    parser.add_argument("--policy", choices=("bionavi_np", "smiles_transformer", "smiles_bond_changes"),
+                        default="bionavi_np")
+    parser.add_argument("--out", type=Path)
     parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    records = args.out / "targets.jsonl"
+    baseline = ROOT / "results/bionavi_np"
+    out = args.out or (baseline if args.policy == "bionavi_np" else baseline / args.policy)
+    out.mkdir(parents=True, exist_ok=True)
+    records = out / "targets.jsonl"
+    manifest = out / "policy.json"
+    if manifest.exists():
+        if json.loads(manifest.read_text()) != args.policy:
+            parser.error("output directory contains results from another policy")
+    elif records.exists() and args.policy != "bionavi_np":
+        parser.error("existing results have no policy manifest")
+    manifest.write_text(json.dumps(args.policy) + "\n")
     with (ROOT / "test_dataset/natural.pkl").open("rb") as stream:
         targets = pickle.load(stream)
     rows = list(map(json.loads, records.read_text().splitlines())) if records.exists() else []
@@ -102,7 +128,7 @@ def main():
     jobs = [(i, target) for i, target in enumerate(targets) if i not in done]
     if jobs:
         with ProcessPoolExecutor(args.workers, mp_context=multiprocessing.get_context("spawn"),
-                                 initializer=initialize) as pool, records.open("a", buffering=1) as stream:
+                                 initializer=initialize, initargs=(args.policy,)) as pool, records.open("a", buffering=1) as stream:
             for future in as_completed([pool.submit(search, job) for job in jobs]):
                 row = future.result()
                 rows.append(row)
@@ -115,7 +141,11 @@ def main():
                "mean_steps": statistics.mean(r["steps"] for r in solved) if solved else None,
                "max_policy_calls": MAX_CALLS, "max_expansions": MAX_EXPANSIONS,
                "simulations": 100, "cpuct": 4.0, "beam_size": 20}
-    (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    summary["policy"] = args.policy
+    if args.policy != "bionavi_np":
+        del summary["beam_size"]
+        summary["max_candidate_templates"] = 50
+    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(summary)
 
 

@@ -1,0 +1,13 @@
+{
+  "targets": 388,
+  "solved": 0,
+  "success_rate": 0.0,
+  "timeouts": 0,
+  "mean_steps": null,
+  "max_policy_calls": 100,
+  "max_expansions": 50,
+  "simulations": 100,
+  "cpuct": 4.0,
+  "policy": "smiles_bond_changes",
+  "max_candidate_templates": 50
+}
