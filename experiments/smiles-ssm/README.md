@@ -21,6 +21,37 @@ python experiments/smiles-ssm/run.py --compare
 정답 순위(`*_val_gold_rank.npy`, `val_gold_ranks.jsonl`)·요약(`summary.json`)이 쌓인다.
 `--verify`가 실패하면 점수 비교를 보류한다.
 
+## 2026-11-21 GPU 학습 결과
+
+시드 0, 배치 크기 256, 최대 입력 길이 160으로 두 모델을 30 epoch 학습했다.
+학습 35,634건과 검증 8,903건, 토큰화·어휘, masked mean pooling, 분류 헤드를
+공유했다. GPU에서 두 모델 모두 출력 차원, 패딩 불변성, 유한한 손실과 gradient
+검사를 통과했다. 계획에 따라 마지막 epoch를 비교했다.
+
+| 검증 지표 | Transformer | 양방향 SSM |
+| --- | ---: | ---: |
+| 파라미터 수 | 5,827,655 | 5,828,679 |
+| Top-1 | 19.22% (1,711건) | 25.29% (2,252건) |
+| Top-10 | 41.17% (3,665건) | 51.76% (4,608건) |
+| Top-50 | 53.90% (4,799건) | 62.27% (5,544건) |
+| 정답 순위 중앙값 | 30위 | 9위 |
+| 학습 및 epoch별 검증 소요 시간 | 465.2초 | 2,773.0초 |
+
+- **Top-50 차이 +8.37%p.** 같은 검증 반응을 짝지어 비교하면 SSM만 맞힌 경우가
+  984건, Transformer만 맞힌 경우가 239건이다. 두 모델 모두 맞힌 경우는 4,560건이다.
+- **학습에 등장한 규칙에서 개선.** 정답 규칙이 학습에 등장한 7,021건의 Top-50은
+  68.35%에서 78.96%로 올랐다. 학습에 없던 정답 규칙 1,882건은 두 모델 모두 0건을 맞혔다.
+- **학습 추이와 시간.** 검증 손실은 두 모델 모두 6 epoch에서 최저였다. Top-50 최고치는
+  Transformer 19 epoch의 54.48%, SSM 30 epoch의 62.27%였다. SSM은 9 epoch
+  (810.3초)에 Transformer의 최종 Top-50을 넘어섰으며, 30 epoch 기준 소요 시간은 5.96배였다.
+
+기존 검증 분할과 단일 시드를 사용한 단일 단계 반응 규칙 분류 결과다. 시드 간 변동,
+추론 속도, 다단계 경로 성공률은 측정 범위 밖이다.
+
+[Transformer 로그](out/transformer.json) · [SSM 로그](out/ssm.json) ·
+[데이터 지문](out/dataset.json) · [CUDA 검증](out/verification.json) · [공통 어휘](out/vocab.json) ·
+[Transformer 정답 순위](out/transformer_val_gold_rank.npy) · [SSM 정답 순위](out/ssm_val_gold_rank.npy)
+
 ## 이 저장소의 맥 환경에서 확인한 것
 
 - 분할 무결성: 학습 35,634 / 검증 8,903, 파일 해시와 규칙 ID·표본 순서는 `out/dataset.json`.

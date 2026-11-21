@@ -1,0 +1,40 @@
+[
+  {
+    "model": "transformer",
+    "logits_shape": [
+      8,
+      14407
+    ],
+    "logits_shape_ok": true,
+    "padding_max_abs_diff": 5.960464477539062e-07,
+    "padding_invariant": true,
+    "logits_finite": true,
+    "loss": 9.777832984924316,
+    "loss_finite": true,
+    "grad_tensors": 53,
+    "grads_finite": true,
+    "grad_max_abs": 0.3696194589138031,
+    "grad_nonzero": true,
+    "passed": true,
+    "params": 5827655
+  },
+  {
+    "model": "ssm",
+    "logits_shape": [
+      8,
+      14407
+    ],
+    "logits_shape_ok": true,
+    "padding_max_abs_diff": 5.364418029785156e-07,
+    "padding_invariant": true,
+    "logits_finite": true,
+    "loss": 9.92128849029541,
+    "loss_finite": true,
+    "grad_tensors": 57,
+    "grads_finite": true,
+    "grad_max_abs": 0.3869411051273346,
+    "grad_nonzero": true,
+    "passed": true,
+    "params": 5828679
+  }
+]

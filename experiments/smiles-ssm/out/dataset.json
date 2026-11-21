@@ -1,0 +1,21 @@
+{
+  "train_pkl_sha256": "d96d0abab30fa83475396d781917dd2db45d37b0a61f53b8033b0d751619dc31",
+  "test_pkl_sha256": "a29b9b220fb679f456393b844b07a13057dedf71a0257966286dac70a4d3a6e2",
+  "template_pkl_sha256": "7c95b48db20a8657c882ddab39a421ffc8d95cc37f99a15c2d6556f8327b8bbc",
+  "n_train": 35634,
+  "n_val": 8903,
+  "train_label_sha256": "e925911f9dec4c9807345cc0405b8a82c69596fe71429797052b57cfb8268cb1",
+  "val_label_sha256": "63c47a491017f2d6990b6bd549e081e9013dc61e8f66787135298450a8ab5334",
+  "train_smiles_order_sha256": "4b2bd6e77d5b433bdbfe1aaf65647f71246916aca2a5b99673bf6f2ce289bdaa",
+  "val_smiles_order_sha256": "eb75a57f8480611c57b9c1618308974eb2319009af2ec93bff7a9a63d1a99469",
+  "train_rule_ids": 10609,
+  "val_rule_ids": 3930,
+  "val_rules_unseen_in_train": 1803,
+  "val_rows_with_unseen_rule": 1882,
+  "vocab_size": 63,
+  "vocab_sha256": "afcbb72058a79a9d351f578a9bb5770f9ff3d696abb373df104c37b60d4eacc4",
+  "train_truncated_rows": 0,
+  "val_truncated_rows": 0,
+  "n_rules": 14407,
+  "device": "cuda:0"
+}
