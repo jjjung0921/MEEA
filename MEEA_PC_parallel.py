@@ -238,7 +238,7 @@ class Node:
                 child_Qs.append(1 - np.mean(min_max_stats.normalize(child.f_mean_path)))
         return np.array(child_Qs)
 
-    def select_child(self, min_max_stats):
+    def select_child(self, min_max_stats, quality=None):
         """
         PUCT(Predictor + UCT) 알고리즘으로 최선의 자식 선택
         Q(s,a) + U(s,a) - illegal_penalty를 최대화
@@ -250,7 +250,9 @@ class Node:
             int: 선택된 자식 노드의 인덱스
         """
         # 활용(exploitation) + 탐색(exploration) - 불법 페널티
-        action_score = self.child_Q(min_max_stats) + self.child_U() - self.child_illegal
+        if quality is None:
+            quality = self.child_Q(min_max_stats)
+        action_score = quality + self.child_U() - self.child_illegal
         best_move = np.argmax(action_score)
         return best_move
 
@@ -348,12 +350,27 @@ def value_fn(model, mols, device):
     return v[0][0]
 
 
+def value_batch(model, states, device):
+    """Evaluate nonempty states from one expansion with a single model call."""
+    if not states:
+        return []
+    width = max(5, max(map(len, states)))
+    fps = np.zeros((len(states), width, 2048), dtype=np.float32)
+    mask = np.zeros((len(states), width), dtype=np.float32)
+    for i, mols in enumerate(states):
+        fps[i, :len(mols)] = batch_smiles_to_fp(mols)
+        mask[i, :len(mols)] = 1
+    with torch.inference_mode():
+        return model(torch.from_numpy(fps).to(device),
+                     torch.from_numpy(mask).to(device)).flatten().cpu().numpy()
+
+
 class MCTS_A:
     """
     MCTS 기반 역합성 경로 계획 클래스
     목표 분자를 시작 물질로 분해하는 합성 경로를 탐색
     """
-    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=None):
+    def __init__(self, target_mol, known_mols, value_model, expand_fn, device, simulations, cpuct, thread_id=None, batch_values=False):
         """
         Args:
             target_mol: 목표 분자 (SMILES)
@@ -365,6 +382,7 @@ class MCTS_A:
             cpuct: UCT 탐색 상수
             thread_id: Thread 번호 (출력용)
         """
+        self.batch_values = batch_values
         self.target_mol = target_mol  # 합성하고자 하는 목표 분자
         self.known_mols = known_mols  # 구매 가능한 시작 물질
         self.expand_fn = expand_fn  # 역합성 예측 모델
@@ -386,7 +404,7 @@ class MCTS_A:
         self.iterations = 0  # 현재까지의 반복 횟수
         self.last_logged_iteration = -1  # 마지막으로 로그 출력한 반복 횟수
 
-    def select_a_leaf(self):
+    def select_a_leaf(self, qualities=None):
         """
         트리에서 리프 노드(확장되지 않은 노드)를 선택
         PUCT 알고리즘으로 최선의 경로를 따라 내려감
@@ -400,7 +418,12 @@ class MCTS_A:
             if not current.is_expanded:  # 확장되지 않은 노드면 반환
                 return current
             # PUCT로 최선의 자식 선택하여 계속 탐색
-            best_move = current.select_child(self.min_max_stats)
+            quality = None
+            if qualities is not None:
+                if current not in qualities:
+                    qualities[current] = current.child_Q(self.min_max_stats)
+                quality = qualities[current]
+            best_move = current.select_child(self.min_max_stats, quality)
             current = current.children[best_move]
 
     def select(self):
@@ -411,7 +434,9 @@ class MCTS_A:
             Node: 확장할 최선의 리프 노드
         """
         # opening_size만큼 리프 노드를 샘플링
-        openings = [self.select_a_leaf() for _ in range(self.opening_size)]
+        # Backpropagation happens after selection, so Q is fixed across these traversals.
+        qualities = {}
+        openings = [self.select_a_leaf(qualities) for _ in range(self.opening_size)]
         # 그 중 f 값(비용)이 가장 낮은 노드 선택
         stats = [opening.f for opening in openings]
         index = np.argmin(stats)
@@ -449,30 +474,31 @@ class MCTS_A:
             # 각 자식에 대한 불법 플래그 초기화
             node.child_illegal = np.array([0] * len(expanded_policy['scores']))
 
-            # 각 예측된 반응에 대해 자식 노드 생성
-            for i in range(len(expanded_policy['scores'])):
-                # 반응물에서 알려진 분자들을 제거 (더 이상 분해할 필요 없음)
-                reactant = [r for r in expanded_policy['reactants'][i].split('.') if r not in self.known_mols]
-                # 현재 상태의 다른 분자들과 병합
-                reactant = reactant + node.state[: expanded_mol_index] + node.state[expanded_mol_index + 1:]
-                reactant = sorted(list(set(reactant)))  # 중복 제거 및 정렬
+            states = []
+            other_mols = node.state[1:]
+            for precursor in expanded_policy['reactants']:
+                remaining = [r for r in precursor.split('.') if r not in self.known_mols]
+                state = sorted(set(remaining + other_mols))
+                states.append(state)
+                if not state:
+                    break
+            values = value_batch(self.value_model, [s for s in states if s], self.device) if self.batch_values else None
+            prior = 1.0 / len(expanded_policy['scores'])
 
+            for i, reactant in enumerate(states):
                 # 반응 비용 계산 (음의 로그 확률)
                 cost = - np.log(np.clip(expanded_policy['scores'][i], 1e-3, 1.0))
                 template = expanded_policy['template'][i]
                 reaction = expanded_policy['reactants'][i] + '>>' + expanded_mol
 
-                # 균등한 사전 확률
-                priors = np.array([1.0 / len(expanded_policy['scores'])] * len(expanded_policy['scores']))
-
                 # 모든 반응물이 알려진 물질인 경우 (성공!)
                 if len(reactant) == 0:
-                    child = Node([], 0, cost=cost, prior=priors[i], action_mol=expanded_mol, reaction=reaction, fmove=len(node.children), template=template, parent=node, cpuct=self.cpuct)
+                    child = Node([], 0, cost=cost, prior=prior, action_mol=expanded_mol, reaction=reaction, fmove=len(node.children), template=template, parent=node, cpuct=self.cpuct)
                     return True, child  # 합성 경로 발견
                 else:
                     # 아직 분해가 필요한 분자가 있는 경우
-                    h = value_fn(self.value_model, reactant, self.device)  # 휴리스틱 값 계산
-                    child = Node(reactant, h, cost=cost, prior=priors[i], action_mol=expanded_mol, reaction=reaction, fmove=len(node.children), template=template, parent=node, cpuct=self.cpuct)
+                    h = values[i] if values is not None else value_fn(self.value_model, reactant, self.device)
+                    child = Node(reactant, h, cost=cost, prior=prior, action_mol=expanded_mol, reaction=reaction, fmove=len(node.children), template=template, parent=node, cpuct=self.cpuct)
 
                     # 이미 방문한 상태인지 확인 (사이클 방지)
                     if '.'.join(reactant) in self.visited_state:

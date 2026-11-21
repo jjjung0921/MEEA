@@ -1,0 +1,44 @@
+[
+  {
+    "policy": "mlp",
+    "index": 364,
+    "scalar_seconds": 25.153,
+    "batch_seconds": 22.022,
+    "matched": true
+  },
+  {
+    "policy": "fp_transformer",
+    "index": 386,
+    "scalar_seconds": 0.279,
+    "batch_seconds": 0.232,
+    "matched": true
+  },
+  {
+    "policy": "smiles_transformer",
+    "index": 336,
+    "scalar_seconds": 25.375,
+    "batch_seconds": 18.801,
+    "matched": true
+  },
+  {
+    "policy": "smiles_bond_changes",
+    "index": 249,
+    "scalar_seconds": 0.436,
+    "batch_seconds": 0.276,
+    "matched": true
+  },
+  {
+    "policy": "independent_tree_ssm",
+    "index": 172,
+    "scalar_seconds": 26.399,
+    "batch_seconds": 17.919,
+    "matched": true
+  },
+  {
+    "policy": "joint_tree_ssm",
+    "index": 291,
+    "scalar_seconds": 0.236,
+    "batch_seconds": 0.126,
+    "matched": true
+  }
+]

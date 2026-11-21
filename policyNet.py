@@ -103,6 +103,9 @@ class RolloutPolicyNet(nn.Module):
         self.dropout1 = nn.Dropout(dropout_rate)  # 과적합 방지
         self.fc3 = nn.Linear(dim, n_rules)  # 출력층 (템플릿 분류)
 
+    def encode(self, x):
+        return self.dropout1(self.bn1(self.fc1(x)))
+
     def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
         """
         순전파
@@ -117,7 +120,7 @@ class RolloutPolicyNet(nn.Module):
             추론 시: 로짓 (batch_size, n_rules)
         """
         # fingerprint -> 은닉층 -> BN -> 드롭아웃 -> 출력층
-        x = self.fc3(self.dropout1(self.bn1(self.fc1(x))))
+        x = self.fc3(self.encode(x))
 
         if y is not None:
             # 학습 모드: 손실 반환

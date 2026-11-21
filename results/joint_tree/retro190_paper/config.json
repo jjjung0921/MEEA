@@ -1,0 +1,15 @@
+{
+  "policies": [
+    "mlp",
+    "independent_tree_ssm",
+    "joint_tree_ssm"
+  ],
+  "targets": 190,
+  "iterations": 500,
+  "simulations": 100,
+  "cpuct": 4,
+  "timeout": 600,
+  "paper": true,
+  "dataset": "USPTO",
+  "topk": 50
+}

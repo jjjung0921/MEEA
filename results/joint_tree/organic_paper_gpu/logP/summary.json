@@ -1,0 +1,56 @@
+[
+  {
+    "policy": "mlp",
+    "targets": 1073,
+    "solved": 245,
+    "timeouts": 1,
+    "success_rate": 0.22833178005591798,
+    "multistep_solved": 231,
+    "mean_steps_on_success": 3.983673469387755
+  },
+  {
+    "policy": "independent_tree_ssm",
+    "targets": 1073,
+    "solved": 240,
+    "timeouts": 1,
+    "success_rate": 0.22367194780987884,
+    "multistep_solved": 226,
+    "mean_steps_on_success": 3.8916666666666666
+  },
+  {
+    "policy": "joint_tree_ssm",
+    "targets": 1073,
+    "solved": 245,
+    "timeouts": 1,
+    "success_rate": 0.22833178005591798,
+    "multistep_solved": 231,
+    "mean_steps_on_success": 3.975510204081633
+  },
+  {
+    "policy": "fp_transformer",
+    "targets": 1073,
+    "solved": 165,
+    "timeouts": 2,
+    "success_rate": 0.15377446411929171,
+    "multistep_solved": 155,
+    "mean_steps_on_success": 5.315151515151515
+  },
+  {
+    "policy": "smiles_transformer",
+    "targets": 1073,
+    "solved": 159,
+    "timeouts": 6,
+    "success_rate": 0.14818266542404473,
+    "multistep_solved": 153,
+    "mean_steps_on_success": 4.9245283018867925
+  },
+  {
+    "policy": "smiles_bond_changes",
+    "targets": 1073,
+    "solved": 182,
+    "timeouts": 1,
+    "success_rate": 0.16961789375582478,
+    "multistep_solved": 179,
+    "mean_steps_on_success": 5.164835164835165
+  }
+]

@@ -19,6 +19,7 @@ import os
 import pickle
 import sys
 import time
+from functools import partial
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(_ROOT)
@@ -77,6 +78,44 @@ def collate_smiles(batch):
     return torch.tensor(out), torch.tensor(np.array(y), dtype=torch.int64)
 
 
+class BondChangeDataset(Dataset):
+    def __init__(self, policy_data, targets):
+        self.policy_data = policy_data
+        self.targets = targets
+
+    def __len__(self):
+        return len(self.policy_data)
+
+    def __getitem__(self, index):
+        return self.policy_data[index], self.targets[index]
+
+
+def collate_bond_changes(batch, collate):
+    policy_rows, changes = zip(*batch)
+    return (*collate(policy_rows), torch.tensor(np.asarray(changes), dtype=torch.float32))
+
+
+def metrics_by_frequency(net, loader, device, amp, frequency):
+    net.eval()
+    counts = np.zeros((4, 4), dtype=np.int64)
+    with torch.no_grad():
+        for x, y in loader:
+            with torch.cuda.amp.autocast(enabled=amp):
+                logits = net(x.to(device))
+            ranks = logits.float().topk(50).indices.cpu() == y[:, None]
+            groups = np.digitize(frequency[y.numpy()], [1, 2, 6])
+            np.add.at(counts[:, 0], groups, 1)
+            for index, k in enumerate((1, 10, 50), start=1):
+                np.add.at(counts[:, index], groups, ranks[:, :k].any(1).numpy())
+    return {
+        name: {"n": int(n), **{
+            f"top{k}": int(hits) / int(n) if n else None
+            for k, hits in zip((1, 10, 50), row)
+        }}
+        for name, (n, *row) in zip(("0", "1", "2-5", "6+"), counts)
+    }
+
+
 def pick_device(name):
     if name != "auto":
         return torch.device(name)
@@ -124,6 +163,9 @@ def main():
     p.add_argument("--num-workers", type=int, default=-1,
                    help="DataLoader workers; -1 = 4 on CUDA, 0 otherwise")
     p.add_argument("--out-dir", default="results/backbones")
+    p.add_argument("--bond-targets", help="training-aligned bond target NPZ")
+    p.add_argument("--aux-weight", type=float, default=0.25)
+    p.add_argument("--eval-checkpoint", help="report validation frequency buckets and exit")
     args = p.parse_args()
 
     torch.manual_seed(0)
@@ -156,18 +198,41 @@ def main():
 
     cuda = device.type == "cuda"
     workers = (4 if cuda else 0) if args.num_workers < 0 else args.num_workers
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
-                              collate_fn=collate, num_workers=workers,
-                              pin_memory=cuda, persistent_workers=workers > 0)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
                              collate_fn=collate, num_workers=workers,
                              pin_memory=cuda, persistent_workers=workers > 0)
 
     net.to(device)
     n_params = sum(p.numel() for p in net.parameters())
-    optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=1e-6)
     amp = args.amp and cuda
+    frequency = np.bincount(train_data["template"], minlength=n_rules)
+    if args.eval_checkpoint:
+        net.load_state_dict(torch.load(args.eval_checkpoint, map_location=device, weights_only=True))
+        print(json.dumps(metrics_by_frequency(net, test_loader, device, amp, frequency)))
+        return
+
+    auxiliary = None
+    train_collate = collate
+    parameters = list(net.parameters())
+    if args.bond_targets:
+        with np.load(args.bond_targets) as data:
+            targets = data["targets"]
+            if not np.array_equal(data["labels"], train_data["template"]):
+                raise ValueError("Bond targets do not match the policy training labels")
+        train_ds = BondChangeDataset(train_ds, targets)
+        train_collate = partial(collate_bond_changes, collate=collate)
+        width = net.fc3.in_features if args.model == "mlp" else net.head[-1].in_features
+        with torch.random.fork_rng(devices=[]):
+            auxiliary = nn.Linear(width, targets.shape[1]).to(device)
+        parameters.extend(auxiliary.parameters())
+        # Each positive edit contributes equally, independent of vocabulary size.
+        positive_scale = targets.shape[1] / targets.sum(axis=1).mean()
+
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+                              collate_fn=train_collate, num_workers=workers,
+                              pin_memory=cuda, persistent_workers=workers > 0)
+    optimizer = torch.optim.Adam(parameters, lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=1e-6)
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -176,6 +241,8 @@ def main():
            "epochs": args.epochs, "batch_size": args.batch_size, "lr": args.lr,
            "n_train": len(train_ds), "n_test": len(test_ds), "n_rules": n_rules,
            "vocab_size": len(vocab) if vocab else None, "history": []}
+    if auxiliary is not None:
+        log.update(aux_weight=args.aux_weight, aux_targets=targets.shape[1])
     print(json.dumps({k: v for k, v in log.items() if k != "history"}))
 
     best = {"top1": -1.0}
@@ -183,15 +250,25 @@ def main():
     for epoch in range(args.epochs):
         net.train()
         losses = []
-        for xb, yb in train_loader:
+        for xb, yb, *extra in train_loader:
             xb = xb.to(device, non_blocking=cuda)
             yb = yb.to(device, non_blocking=cuda)
             optimizer.zero_grad()
             with torch.cuda.amp.autocast(enabled=amp):
-                loss = net(xb, yb).mean()
+                if auxiliary is None:
+                    loss = net(xb, yb).mean()
+                else:
+                    representation = net.encode(xb)
+                    logits = net.fc3(representation) if args.model == "mlp" else net.head(representation)
+                    loss = F.cross_entropy(logits, yb)
+                    edits = extra[0].to(device, non_blocking=cuda)
+                    aux_logits = auxiliary(representation)
+                    weights = 1 + edits * (positive_scale - 1)
+                    aux_loss = F.binary_cross_entropy_with_logits(aux_logits, edits, weight=weights)
+                    loss = loss + args.aux_weight * aux_loss
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            nn.utils.clip_grad_norm_(net.parameters(), max_norm=5)
+            nn.utils.clip_grad_norm_(parameters, max_norm=5)
             scaler.step(optimizer)
             scaler.update()
             losses.append(loss.item())
@@ -217,6 +294,12 @@ def main():
         with open(f"{args.out_dir}/{args.model}.json", "w") as f:
             json.dump(log, f, indent=2)
 
+    if auxiliary is not None:
+        net.load_state_dict(torch.load(f"{args.out_dir}/{args.model}.ckpt", map_location=device,
+                                       weights_only=True))
+        log["best_by_frequency"] = metrics_by_frequency(net, test_loader, device, amp, frequency)
+        with open(f"{args.out_dir}/{args.model}.json", "w") as f:
+            json.dump(log, f, indent=2)
     print("BEST", json.dumps(best))
 
 

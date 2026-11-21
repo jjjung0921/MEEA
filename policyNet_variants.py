@@ -102,15 +102,17 @@ class TransformerPolicyNet(nn.Module):
         self.pos_encoder = PositionalEncoding(d_model, max_len=self.seq_len + 1)
         self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, n_rules))
 
-    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+    def encode(self, x):
         # x: (batch, fp_dim)
         bsz = x.size(0)
         x = x.view(bsz, self.seq_len, self.patch_size)
         x = self.patch_embed(x)
         x = self.pos_encoder(x)
         x = self.encoder(x)
-        x = x.mean(dim=1)  # simple global average pooling
-        logits = self.head(x)
+        return x.mean(dim=1)
+
+    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+        logits = self.head(self.encode(x))
         if y is not None:
             return loss_fn(logits, y)
         return logits
@@ -180,13 +182,16 @@ class SmilesTransformerPolicyNet(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, n_rules))
 
-    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+    def encode(self, x):
         # x: (batch, seq_len) token ids
         pad_mask = x == PAD
         h = self.embed(x)
         h = self.pos_encoder(h)
         h = self.encoder(h, src_key_padding_mask=pad_mask)
-        logits = self.head(h[:, 0])  # <cls> token
+        return h[:, 0]  # <cls> token
+
+    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+        logits = self.head(self.encode(x))
         if y is not None:
             return loss_fn(logits, y)
         return logits

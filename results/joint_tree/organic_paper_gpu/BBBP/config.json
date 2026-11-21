@@ -1,0 +1,19 @@
+{
+  "policies": [
+    "mlp",
+    "independent_tree_ssm",
+    "joint_tree_ssm",
+    "fp_transformer",
+    "smiles_transformer",
+    "smiles_bond_changes"
+  ],
+  "targets": 610,
+  "iterations": 500,
+  "simulations": 100,
+  "cpuct": 4,
+  "timeout": 600,
+  "paper": true,
+  "device": "cuda:0",
+  "dataset": "BBBP",
+  "topk": 50
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "policy": "mlp",
+    "targets": 190,
+    "solved": 28,
+    "timeouts": 0,
+    "success_rate": 0.14736842105263157,
+    "multistep_solved": 28,
+    "mean_steps_on_success": 6.535714285714286
+  },
+  {
+    "policy": "independent_tree_ssm",
+    "targets": 190,
+    "solved": 28,
+    "timeouts": 0,
+    "success_rate": 0.14736842105263157,
+    "multistep_solved": 28,
+    "mean_steps_on_success": 6.5
+  },
+  {
+    "policy": "joint_tree_ssm",
+    "targets": 190,
+    "solved": 27,
+    "timeouts": 0,
+    "success_rate": 0.14210526315789473,
+    "multistep_solved": 27,
+    "mean_steps_on_success": 6.555555555555555
+  }
+]
