@@ -146,6 +146,16 @@ def encode_smiles(smiles: str, vocab: Dict[str, int], max_len: int) -> list:
     return ids[:max_len]
 
 
+def masked_mean_pool(h: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+    """Mean over the non-padding positions only.
+
+    h: (batch, seq_len, d_model), keep: (batch, seq_len) bool, True = real token.
+    Padding contributes nothing, so appending padding cannot change the result.
+    """
+    weights = keep.unsqueeze(-1).to(h.dtype)
+    return (h * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+
+
 class SmilesTransformerPolicyNet(nn.Module):
     """
     Transformer encoder over SMILES tokens.
@@ -165,10 +175,14 @@ class SmilesTransformerPolicyNet(nn.Module):
         dim_feedforward: int = 512,
         dropout: float = 0.1,
         max_len: int = 256,
+        pool: str = "cls",
     ):
         super().__init__()
+        if pool not in ("cls", "mean"):
+            raise ValueError(f"Unknown pool: {pool}")
         self.n_rules = n_rules
         self.max_len = max_len
+        self.pool = pool
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=PAD)
         self.pos_encoder = PositionalEncoding(d_model, max_len=max_len)
         encoder_layer = nn.TransformerEncoderLayer(
@@ -188,7 +202,110 @@ class SmilesTransformerPolicyNet(nn.Module):
         h = self.embed(x)
         h = self.pos_encoder(h)
         h = self.encoder(h, src_key_padding_mask=pad_mask)
+        if self.pool == "mean":
+            return masked_mean_pool(h, ~pad_mask)
         return h[:, 0]  # <cls> token
+
+    def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
+        logits = self.head(self.encode(x))
+        if y is not None:
+            return loss_fn(logits, y)
+        return logits
+
+
+class BiDiagonalSSM(nn.Module):
+    """One bidirectional diagonal linear recurrence over the token axis.
+
+    Per channel i and direction: h_t = a_i * h_{t-1} + u_t_i, with
+    a_i = sigmoid(log_a_i) in (0, 1) so the recurrence stays stable. Padding
+    positions leave the state untouched, so a padded position neither feeds
+    the state nor produces one of its own; the backward pass therefore starts
+    from the last real token no matter how much padding follows it.
+    """
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+        self.input = nn.Linear(d_model, 2 * d_model)
+        self.log_a = nn.Parameter(torch.zeros(2, d_model))
+        self.combine = nn.Linear(2 * d_model, d_model)
+
+    @staticmethod
+    def _scan(u: torch.Tensor, keep: torch.Tensor, decay: torch.Tensor) -> torch.Tensor:
+        # u: (batch, seq_len, d_model), keep: (batch, seq_len, 1), decay: (d_model,)
+        state = torch.zeros_like(u[:, 0])
+        outputs = []
+        for t in range(u.size(1)):
+            state = torch.where(keep[:, t], decay * state + u[:, t], state)
+            outputs.append(state)
+        return torch.stack(outputs, dim=1)
+
+    def forward(self, x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        forward_u, backward_u = self.input(x).chunk(2, dim=-1)
+        decay = torch.sigmoid(self.log_a)
+        keep = keep.unsqueeze(-1)
+        h_f = self._scan(forward_u, keep, decay[0])
+        h_b = self._scan(backward_u.flip(1), keep.flip(1), decay[1]).flip(1)
+        return self.combine(torch.cat((h_f, h_b), dim=-1))
+
+
+class BiSSMBlock(nn.Module):
+    """Pre-norm residual block: bidirectional SSM mixing, then position-wise MLP."""
+
+    def __init__(self, d_model: int, dim_feedforward: int, dropout: float):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(d_model)
+        self.ssm = BiDiagonalSSM(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, dim_feedforward),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_feedforward, d_model),
+        )
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, h: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        h = h + self.dropout(self.ssm(self.norm1(h), keep))
+        return h + self.dropout(self.ff(self.norm2(h)))
+
+
+class SmilesBiSSMPolicyNet(nn.Module):
+    """
+    Bidirectional diagonal linear SSM over SMILES tokens.
+
+    Same tokens, vocabulary, padding mask, masked mean pooling and head as
+    SmilesTransformerPolicyNet(pool="mean"); only the token mixing differs
+    (linear recurrence in both directions instead of attention). No positional
+    encoding: the recurrence itself carries position.
+    """
+
+    def __init__(
+        self,
+        n_rules: int,
+        vocab_size: int,
+        d_model: int = 256,
+        num_layers: int = 4,
+        dim_feedforward: int = 512,
+        dropout: float = 0.1,
+        max_len: int = 256,
+    ):
+        super().__init__()
+        self.n_rules = n_rules
+        self.max_len = max_len
+        self.embed = nn.Embedding(vocab_size, d_model, padding_idx=PAD)
+        self.blocks = nn.ModuleList(
+            BiSSMBlock(d_model, dim_feedforward, dropout) for _ in range(num_layers)
+        )
+        self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, n_rules))
+
+    def encode(self, x):
+        # x: (batch, seq_len) token ids
+        keep = x != PAD
+        h = self.embed(x)
+        for block in self.blocks:
+            h = block(h, keep)
+        return masked_mean_pool(h, keep)
 
     def forward(self, x, y=None, loss_fn=nn.CrossEntropyLoss()):
         logits = self.head(self.encode(x))
@@ -342,6 +459,8 @@ __all__ = [
     "DropoutPolicyNet",
     "TransformerPolicyNet",
     "SmilesTransformerPolicyNet",
+    "SmilesBiSSMPolicyNet",
+    "masked_mean_pool",
     "build_smiles_vocab",
     "encode_smiles",
     "tokenize_smiles",
