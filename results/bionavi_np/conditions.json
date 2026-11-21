@@ -1,0 +1,21 @@
+{
+  "benchmark": "test_dataset/natural.pkl",
+  "policy": "BioNavi-NP four-checkpoint OpenNMT ensemble",
+  "checkpoint_steps": [
+    30000,
+    50000,
+    80000,
+    100000
+  ],
+  "upstream_commit": "8350a4dc8ca262154787d6a3055ba75bd4e0c746",
+  "stock_size": 40,
+  "beam_size": 20,
+  "max_policy_calls": 100,
+  "max_expansions": 50,
+  "lookahead_simulations": 100,
+  "cpuct": 4,
+  "wall_timeout_seconds": 600,
+  "workers": 2,
+  "gpu": "NVIDIA GeForce RTX 4060 Ti",
+  "paper": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10920677/#Sec8"
+}

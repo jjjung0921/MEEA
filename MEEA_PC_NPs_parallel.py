@@ -297,11 +297,14 @@ class MCTS_A:
             current.f_mean_path.append(stat)
             current = current.parent
 
-    def search(self, times=500):
+    def search(self, times=500, max_expansions=None):
         success, node = False, None
         progress_interval = 100  # 100회마다 진행 상황 출력
+        self.expansions = 0
 
-        while self.iterations < times and not success and (not np.all(self.root.child_illegal > 0) or len(self.root.child_illegal) == 0):
+        while (self.iterations < times and not success
+               and (max_expansions is None or self.expansions < max_expansions)
+               and (not np.all(self.root.child_illegal > 0) or len(self.root.child_illegal) == 0)):
             expand_node = self.select()
             if '.'.join(expand_node.state) in self.visited_state:
                 expand_node.parent.child_illegal[expand_node.fmove] = 1000
@@ -312,6 +315,7 @@ class MCTS_A:
                 continue
             else:
                 self.visited_state.append('.'.join(expand_node.state))
+                self.expansions += 1
                 success, node = self.expand(expand_node)
                 self.update(expand_node)
 

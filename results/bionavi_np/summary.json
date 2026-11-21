@@ -1,0 +1,12 @@
+{
+  "targets": 388,
+  "solved": 377,
+  "success_rate": 0.9716494845360825,
+  "timeouts": 0,
+  "mean_steps": 3.1220159151193636,
+  "max_policy_calls": 100,
+  "max_expansions": 50,
+  "simulations": 100,
+  "cpuct": 4.0,
+  "beam_size": 20
+}
